@@ -144,7 +144,11 @@ The test suite includes official cryptographic vectors, transaction hashes gener
 
 ## Releasing
 
-Add a NuGet.org API key scoped to `Lighter.Signer.Net` as the repository secret `NUGET_API_KEY`, then publish a GitHub release with a semantic-version tag such as `v0.1.0-preview.1`. The release workflow builds, tests, verifies, and publishes the package and symbols.
+Releases use [NuGet trusted publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing), so no long-lived API key is stored in GitHub.
+
+For the one-time setup, create a trusted publishing policy in your NuGet.org account for repository `RusselRillema/LighterDotNet` and workflow `publish-nuget.yml`, leaving the environment blank. Add your NuGet.org profile username as the GitHub Actions repository variable `NUGET_USER`.
+
+Publish a GitHub release with a semantic-version tag such as `v0.1.0-preview.1`. The release workflow builds, tests, verifies, obtains a short-lived NuGet credential, and publishes the package and symbols. NuGet package versions cannot be replaced after publication; corrections require a new version.
 
 ## License
 
