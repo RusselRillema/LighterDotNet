@@ -2,4 +2,4 @@ APIKEY
 **/bin/
 **/obj/
 .idea/
-
+artifacts/

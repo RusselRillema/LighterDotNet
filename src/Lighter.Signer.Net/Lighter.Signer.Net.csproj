@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <RootNamespace>Lighter.Signer</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PackageId>Lighter.Signer.Net</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <Authors>Russel Rillema</Authors>
+    <Copyright>Copyright (c) 2026 Russel Rillema</Copyright>
+    <Title>Lighter Signer for .NET</Title>
+    <Description>Dependency-free managed .NET signing for Lighter authentication tokens and transactions.</Description>
+    <PackageTags>lighter;exchange;signer;signing;schnorr;poseidon2;dotnet</PackageTags>
+    <PackageProjectUrl>https://github.com/RusselRillema/LighterDotNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/RusselRillema/LighterDotNet.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <IsPackable>true</IsPackable>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

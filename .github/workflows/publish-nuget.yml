@@ -1,0 +1,71 @@
+name: Publish NuGet package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "Release tag '$GITHUB_REF_NAME' is not a supported NuGet version."
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore Lighter.Signer.Net.sln
+
+      - name: Build
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.value }}
+        run: dotnet build Lighter.Signer.Net.sln --configuration Release --no-restore -p:Version="$PACKAGE_VERSION"
+
+      - name: Test .NET 8
+        run: dotnet run --project tests/Lighter.Signer.Net.Tests/Lighter.Signer.Net.Tests.csproj --configuration Release --framework net8.0 --no-build
+
+      - name: Test .NET 10
+        run: dotnet run --project tests/Lighter.Signer.Net.Tests/Lighter.Signer.Net.Tests.csproj --configuration Release --framework net10.0 --no-build
+
+      - name: Pack
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.value }}
+        run: dotnet pack src/Lighter.Signer.Net/Lighter.Signer.Net.csproj --configuration Release --no-build --output artifacts -p:PackageVersion="$PACKAGE_VERSION"
+
+      - name: Verify package contents
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.value }}
+        shell: bash
+        run: |
+          package="artifacts/Lighter.Signer.Net.$PACKAGE_VERSION.nupkg"
+          entries="$(unzip -Z1 "$package")"
+          grep -Fxq "lib/net8.0/Lighter.Signer.Net.dll" <<< "$entries"
+          grep -Fxq "lib/net10.0/Lighter.Signer.Net.dll" <<< "$entries"
+          grep -Fxq "README.md" <<< "$entries"
+          grep -Fxq "LICENSE" <<< "$entries"
+          if grep -Eiq "APIKEY|Console|LighterApiClient" <<< "$entries"; then
+            echo "The package contains sample or credential files."
+            exit 1
+          fi
+
+      - name: Publish to NuGet.org
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

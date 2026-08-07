@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore Lighter.Signer.Net.sln
+
+      - name: Build
+        run: dotnet build Lighter.Signer.Net.sln --configuration Release --no-restore
+
+      - name: Test .NET 8
+        run: dotnet run --project tests/Lighter.Signer.Net.Tests/Lighter.Signer.Net.Tests.csproj --configuration Release --framework net8.0 --no-build
+
+      - name: Test .NET 10
+        run: dotnet run --project tests/Lighter.Signer.Net.Tests/Lighter.Signer.Net.Tests.csproj --configuration Release --framework net10.0 --no-build
+
+      - name: Pack
+        run: dotnet pack src/Lighter.Signer.Net/Lighter.Signer.Net.csproj --configuration Release --no-build --output artifacts
