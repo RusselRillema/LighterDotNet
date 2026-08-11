@@ -25,17 +25,9 @@ internal readonly record struct Goldilocks
 
     public static Goldilocks One => new(1UL);
 
-    public static Goldilocks FromSigned(long value)
-    {
-        if (value >= 0)
-        {
-            return new Goldilocks((ulong)value);
-        }
-
-        var magnitude = (ulong)(-(value + 1)) + 1;
-        var reduced = magnitude % Modulus;
-        return reduced == 0 ? Zero : new Goldilocks(Modulus - reduced);
-    }
+    // The Go signer converts signed inputs with a plain two's-complement cast to uint64 before
+    // reduction, so -1 must map to 2^64 - 1 = 2^32 - 2 (mod p) rather than the residue p - 1.
+    public static Goldilocks FromSigned(long value) => new(unchecked((ulong)value));
 
     public static Goldilocks FromLittleEndian(ReadOnlySpan<byte> bytes)
     {

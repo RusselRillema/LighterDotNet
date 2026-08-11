@@ -15,6 +15,18 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Schnorr matches official deterministic vector", TestSchnorrAsync),
     ("Transaction hashes match official Go signer", TestTransactionHashesAsync),
     ("Sub-account transfer matches official Go signer", TestTransferHashAsync),
+    ("Create order defaults 28-day expiry", TestDefaultOrderExpiryAsync),
+    ("Modify order hash matches official Go signer", TestModifyOrderHashAsync),
+    ("Update leverage hash matches official Go signer", TestUpdateLeverageHashAsync),
+    ("Approve integrator hash matches official Go signer", TestApproveIntegratorHashAsync),
+    ("Attribute aggregation matches official Go signer", TestAttributeAggregationAsync),
+    ("Market order hash matches official Go signer", TestMarketOrderHashAsync),
+    ("Nil-valued attributes preserve base hash", TestNilAttributesPreserveHashAsync),
+    ("Attribute validation rejects invalid combinations", TestAttributeValidationAsync),
+    ("Order validation enforces per-type rules", TestOrderValidationAsync),
+    ("Enum factory equals byte construction", TestEnumFactoryAsync),
+    ("Custom transaction expiry honored", TestTransactionExpiryAsync),
+    ("Negative and spot-market inputs match official Go signer", TestNegativeAndSpotInputHashesAsync),
     ("Package exposes only signer API types", TestPublicSurfaceAsync),
     ("REST client uses official wire contract", TestRestWireContractAsync),
     ("REST client surfaces exchange rejection", TestRestFailureAsync),
@@ -150,12 +162,369 @@ static Task TestTransferHashAsync()
     return Task.CompletedTask;
 }
 
+// The known-answer hashes below were generated with the official Go signer,
+// github.com/elliottech/lighter-go v1.0.8-0.20260806100336-17f2d60e4cf5 (commit 17f2d60e4cf5),
+// by constructing each txtypes.L2*TxInfo with these exact values and calling Hash(304).
+static Task TestDefaultOrderExpiryAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var now = DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_433);
+    var clock = new FixedTimeProvider(now);
+    var defaulted = new LighterSigner(privateKey, 1, 0, 304, clock).SignCreateOrder(
+        new OrderRequest(7, 123, 10, 1_000_000, false, 0, 1, false, 0, LighterSigner.Default28DayOrderExpiry),
+        42);
+    var expectedExpiry = now.AddDays(28).ToUnixTimeMilliseconds();
+    using (var payload = JsonDocument.Parse(defaulted.TransactionInfo))
+    {
+        AssertEqual(expectedExpiry, payload.RootElement.GetProperty("OrderExpiry").GetInt64(), "defaulted order expiry");
+    }
+
+    var explicitOrder = new LighterSigner(privateKey, 1, 0, 304, clock).SignCreateOrder(
+        new OrderRequest(7, 123, 10, 1_000_000, false, 0, 1, false, 0, expectedExpiry),
+        42);
+    AssertEqual(explicitOrder.TransactionHash, defaulted.TransactionHash, "defaulted expiry hash");
+    return Task.CompletedTask;
+}
+
+static Task TestModifyOrderHashAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var clock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_436));
+    var signer = new LighterSigner(privateKey, 1, 0, 304, clock);
+    var modify = signer.SignModifyOrder(
+        new ModifyOrderRequest(7, 281_474_976_710_700, 10, 1_000_000, 0),
+        45);
+    AssertEqual(
+        "eb878794bbe31fd893b06c4054726538b054e62419ba34455f9f1fbaff7205fe537c04d1b0f6376c",
+        modify.TransactionHash,
+        "modify-order hash");
+    AssertEqual(17, modify.TransactionType, "modify-order type");
+    using var payload = JsonDocument.Parse(modify.TransactionInfo);
+    AssertEqual(281_474_976_710_700L, payload.RootElement.GetProperty("Index").GetInt64(), "modify payload index");
+    AssertEqual(0L, payload.RootElement.GetProperty("TriggerPrice").GetInt64(), "modify payload trigger price");
+    AssertEqual(JsonValueKind.Null, payload.RootElement.GetProperty("L2TxAttributes").ValueKind, "modify attributes encoding");
+    AssertEqual(80, Convert.FromBase64String(payload.RootElement.GetProperty("Sig").GetString()!).Length, "modify signature length");
+    return Task.CompletedTask;
+}
+
+static Task TestUpdateLeverageHashAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var clock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_437));
+    var leverage = new LighterSigner(privateKey, 1, 0, 304, clock).SignUpdateLeverage(7, 500, (byte)MarginMode.Isolated, 46);
+    AssertEqual(
+        "1c41dd2bdb1d2b0fdc22441efeffb78d8370a66c12d7216501a60a31dd26068a648e9ee267363998",
+        leverage.TransactionHash,
+        "update-leverage hash");
+    AssertEqual(20, leverage.TransactionType, "update-leverage type");
+    using var payload = JsonDocument.Parse(leverage.TransactionInfo);
+    AssertEqual(500L, payload.RootElement.GetProperty("InitialMarginFraction").GetInt64(), "leverage payload margin fraction");
+    AssertEqual(1L, payload.RootElement.GetProperty("MarginMode").GetInt64(), "leverage payload margin mode");
+
+    var rawByte = new LighterSigner(privateKey, 1, 0, 304, clock).SignUpdateLeverage(7, 500, 1, 46);
+    AssertEqual(leverage.TransactionHash, rawByte.TransactionHash, "margin-mode enum equivalence");
+    return Task.CompletedTask;
+}
+
+static Task TestApproveIntegratorHashAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var clock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_438));
+    var approval = new LighterSigner(privateKey, 1, 0, 304, clock).SignApproveIntegrator(
+        new ApproveIntegratorRequest(12_345, 100, 50, 100, 50, 1_999_999_999_999),
+        47);
+    AssertEqual(
+        "445d06dce882609734cae5f9b0369e237a72e4d5649befc6773d15a8c6571702f0973ee0bcbdf8e1",
+        approval.TransactionHash,
+        "approve-integrator hash");
+    AssertEqual(45, approval.TransactionType, "approve-integrator type");
+    using (var payload = JsonDocument.Parse(approval.TransactionInfo))
+    {
+        AssertEqual(12_345L, payload.RootElement.GetProperty("IntegratorAccountIndex").GetInt64(), "approval payload integrator");
+        AssertEqual(string.Empty, payload.RootElement.GetProperty("L1Sig").GetString()!, "approval payload L1 signature");
+        AssertEqual(JsonValueKind.Null, payload.RootElement.GetProperty("L2TxAttributes").ValueKind, "approval attributes encoding");
+    }
+
+    var revocation = new LighterSigner(privateKey, 1, 0, 304, clock).SignApproveIntegrator(
+        new ApproveIntegratorRequest(12_345, 0, 0, 0, 0, 0),
+        48);
+    AssertEqual(
+        "e92984d27ed4aab23231ebb353776451579cca06b061ad58eb740744c5604c994583c4a2971ac02a",
+        revocation.TransactionHash,
+        "approve-integrator revocation hash");
+    return Task.CompletedTask;
+}
+
+static Task TestAttributeAggregationAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var order = new OrderRequest(7, 123, 10, 1_000_000, false, 0, 1, false, 0, 1_999_999_999_999);
+    var createClock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_433));
+
+    var skipNonce = new LighterSigner(privateKey, 1, 0, 304, createClock).SignCreateOrder(
+        order,
+        42,
+        new L2TxAttributes { SkipNonce = 1 });
+    AssertEqual(
+        "c30d19e1e9009ffb450bc176a198c4d3b3f7bff6c3c25e0ae60aec912741a13954226166dc9dbde4",
+        skipNonce.TransactionHash,
+        "skip-nonce aggregated hash");
+    using (var payload = JsonDocument.Parse(skipNonce.TransactionInfo))
+    {
+        AssertEqual(1L, payload.RootElement.GetProperty("L2TxAttributes").GetProperty("4").GetInt64(), "skip-nonce attribute encoding");
+    }
+
+    var integrator = new LighterSigner(privateKey, 1, 0, 304, createClock).SignCreateOrder(
+        order,
+        42,
+        new L2TxAttributes { IntegratorAccountIndex = 12_345, IntegratorTakerFee = 400, IntegratorMakerFee = 200 });
+    AssertEqual(
+        "c3023ce4c0cd19e19c3129358e67b71ef44a89b82c58fb06cb0a166ba2d40928fcbe9cfb6dda515b",
+        integrator.TransactionHash,
+        "integrator aggregated hash");
+    using (var payload = JsonDocument.Parse(integrator.TransactionInfo))
+    {
+        var attributes = payload.RootElement.GetProperty("L2TxAttributes");
+        AssertEqual(12_345L, attributes.GetProperty("1").GetInt64(), "integrator index attribute encoding");
+        AssertEqual(400L, attributes.GetProperty("2").GetInt64(), "integrator taker-fee attribute encoding");
+        AssertEqual(200L, attributes.GetProperty("3").GetInt64(), "integrator maker-fee attribute encoding");
+    }
+
+    var modifyClock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_436));
+    var selfTrade = new LighterSigner(privateKey, 1, 0, 304, modifyClock).SignModifyOrder(
+        new ModifyOrderRequest(7, 281_474_976_710_700, 10, 1_000_000, 0),
+        45,
+        new L2TxAttributes
+        {
+            SelfTradeBehaviorMode = (byte)SelfTradeBehavior.CancelBoth,
+            SelfTradeEqualityMode = (byte)SelfTradeEquality.MasterAccountIndex,
+        });
+    AssertEqual(
+        "325deb320a95150adf84a907d1e5a97ca15c7a3ef697741cae84eaede3bcac8fc5e4a28e4130fed5",
+        selfTrade.TransactionHash,
+        "self-trade aggregated hash");
+    using (var payload = JsonDocument.Parse(selfTrade.TransactionInfo))
+    {
+        var attributes = payload.RootElement.GetProperty("L2TxAttributes");
+        AssertEqual(2L, attributes.GetProperty("6").GetInt64(), "self-trade behavior attribute encoding");
+        AssertEqual(1L, attributes.GetProperty("7").GetInt64(), "self-trade equality attribute encoding");
+    }
+
+    return Task.CompletedTask;
+}
+
+static Task TestMarketOrderHashAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var clock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_439));
+    var market = new LighterSigner(privateKey, 1, 0, 304, clock).SignCreateOrder(
+        OrderRequest.Create(7, 124, 10, 1_000_000, false, OrderType.Market, OrderTimeInForce.ImmediateOrCancel, false, 0, 0),
+        49);
+    AssertEqual(
+        "4448881705390f3aae29a05cc9520738cb5467b3ccd165ba73786927d9b973e8cd1125189c7895f7",
+        market.TransactionHash,
+        "market-order hash");
+    return Task.CompletedTask;
+}
+
+static Task TestNilAttributesPreserveHashAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var clock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_433));
+    var nilValued = new LighterSigner(privateKey, 1, 0, 304, clock).SignCreateOrder(
+        new OrderRequest(7, 123, 10, 1_000_000, false, 0, 1, false, 0, 1_999_999_999_999),
+        42,
+        new L2TxAttributes { IntegratorAccountIndex = 0, SelfTradeBehaviorMode = 0 });
+    AssertEqual(
+        "aa8f0203aa47fd2f9c82b85d96a3228b40884ebf2bd7cc6e21668f0a7e5ba16e2b6f3214af822fa6",
+        nilValued.TransactionHash,
+        "nil-valued attributes hash");
+    using var payload = JsonDocument.Parse(nilValued.TransactionInfo);
+    var attributes = payload.RootElement.GetProperty("L2TxAttributes");
+    AssertEqual(0L, attributes.GetProperty("1").GetInt64(), "nil integrator attribute encoding");
+    AssertEqual(0L, attributes.GetProperty("6").GetInt64(), "nil self-trade attribute encoding");
+    return Task.CompletedTask;
+}
+
+static Task TestAttributeValidationAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var clock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_433));
+    var signer = new LighterSigner(privateKey, 1, 0, 304, clock);
+    var order = new OrderRequest(7, 123, 10, 1_000_000, false, 0, 1, false, 0, 1_999_999_999_999);
+    SignedTransaction Sign(L2TxAttributes attributes) => signer.SignCreateOrder(order, 42, attributes);
+
+    AssertThrows<ArgumentException>(
+        () => Sign(new L2TxAttributes
+        {
+            IntegratorAccountIndex = 1_000,
+            IntegratorTakerFee = 400,
+            IntegratorMakerFee = 0,
+            SkipNonce = 1,
+            SelfTradeBehaviorMode = 0,
+        }),
+        "more than four attributes (nil-valued entries count)");
+    AssertThrows<ArgumentException>(
+        () => Sign(new L2TxAttributes { IntegratorTakerFee = 400 }),
+        "fees without an integrator account index");
+    AssertThrows<ArgumentException>(
+        () => Sign(new L2TxAttributes { IntegratorAccountIndex = 1_000, IntegratorTakerFee = 400, SelfTradeBehaviorMode = 1 }),
+        "fees combined with self-trade attributes");
+    AssertThrows<ArgumentException>(
+        () => Sign(new L2TxAttributes
+        {
+            SelfTradeBehaviorMode = (byte)SelfTradeBehavior.Reduce,
+            SelfTradeEqualityMode = (byte)SelfTradeEquality.MasterAccountIndex,
+        }),
+        "reduce behavior with master-account equality");
+    AssertThrows<ArgumentException>(
+        () => Sign(new L2TxAttributes { SkipNonce = 0 }),
+        "skip nonce zero");
+    AssertThrows<ArgumentException>(
+        () => Sign(new L2TxAttributes { SkipNonce = 2 }),
+        "skip nonce above one");
+    AssertThrows<ArgumentException>(
+        () => Sign(new L2TxAttributes { IntegratorAccountIndex = 1_000, IntegratorTakerFee = 1_000_001 }),
+        "fee above the fee tick");
+    AssertThrows<ArgumentException>(
+        () => Sign(new L2TxAttributes { IntegratorAccountIndex = 281_474_976_710_655 }),
+        "integrator account index above the maximum");
+    return Task.CompletedTask;
+}
+
+static Task TestOrderValidationAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var clock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_433));
+    var signer = new LighterSigner(privateKey, 1, 0, 304, clock);
+    const long expiry = 1_999_999_999_999;
+
+    AssertThrows<ArgumentException>(
+        () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 1, 1, false, 0, 0), 50),
+        "market order with good-till-time");
+    AssertThrows<ArgumentException>(
+        () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 0, 0, false, 0, expiry), 50),
+        "immediate-or-cancel limit order with an expiry");
+    AssertThrows<ArgumentException>(
+        () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 0, 1, false, 0, 0), 50),
+        "good-till-time limit order without an expiry");
+    AssertThrows<ArgumentException>(
+        () => signer.SignCreateOrder(new OrderRequest(2048, 125, 10, 100, false, 2, 0, false, 90, expiry), 50),
+        "stop-loss order on a spot market");
+    AssertThrows<ArgumentException>(
+        () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 6, 0, false, 0, expiry), 50),
+        "TWAP order with immediate-or-cancel");
+    AssertThrows<ArgumentException>(
+        () => signer.SignCreateOrder(new OrderRequest(2048, 125, 10, 100, false, 0, 1, true, 0, expiry), 50),
+        "reduce-only order on a spot market");
+    AssertThrows<ArgumentException>(
+        () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 7, 1, false, 0, expiry), 50),
+        "unknown order type");
+
+    AssertEqual(
+        14,
+        signer.SignCreateOrder(new OrderRequest(7, 0, 10, 100, false, 0, 1, false, 0, expiry), 50).TransactionType,
+        "nil client order index signs");
+    AssertEqual(
+        14,
+        signer.SignCreateOrder(new OrderRequest(2048, 126, 10, 100, false, 0, 1, false, 0, expiry), 50).TransactionType,
+        "spot-market limit order signs");
+    AssertEqual(
+        14,
+        signer.SignCreateOrder(new OrderRequest(7, 127, 10, 100, false, 2, 0, false, 95, expiry), 50).TransactionType,
+        "perpetual stop-loss order signs");
+    return Task.CompletedTask;
+}
+
+static Task TestEnumFactoryAsync()
+{
+    var byteOrder = new OrderRequest(7, 123, 10, 1_000_000, false, 0, 1, false, 0, 1_999_999_999_999);
+    var enumOrder = OrderRequest.Create(
+        7, 123, 10, 1_000_000, false, OrderType.Limit, OrderTimeInForce.GoodTillTime, false, 0, 1_999_999_999_999);
+    AssertEqual(byteOrder, enumOrder, "enum factory equality");
+    return Task.CompletedTask;
+}
+
+static Task TestTransactionExpiryAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+    var now = DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_433);
+    var signer = new LighterSigner(privateKey, 1, 0, 304, new FixedTimeProvider(now))
+    {
+        TransactionExpiry = TimeSpan.FromMinutes(5),
+    };
+    var cancel = signer.SignCancelOrder(7, 281_474_976_710_700, 43);
+    using (var payload = JsonDocument.Parse(cancel.TransactionInfo))
+    {
+        AssertEqual(
+            now.AddMinutes(5).ToUnixTimeMilliseconds(),
+            payload.RootElement.GetProperty("ExpiredAt").GetInt64(),
+            "custom transaction expiry");
+    }
+
+    AssertEqual(
+        LighterSigner.DefaultTransactionExpiry,
+        new LighterSigner(privateKey, 1, 0, 304).TransactionExpiry,
+        "default transaction expiry");
+    AssertThrows<ArgumentOutOfRangeException>(() => signer.TransactionExpiry = TimeSpan.Zero, "zero transaction expiry");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.TransactionExpiry = TimeSpan.FromSeconds(-1),
+        "negative transaction expiry");
+    return Task.CompletedTask;
+}
+
+static Task TestNegativeAndSpotInputHashesAsync()
+{
+    const string privateKey = "01010101010101010101010101010101010101010101010101010101010101010101010101010101";
+
+    // Go hashes signed values via a two's-complement cast, so -1 becomes 2^32 - 2 mod p.
+    var approvalClock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_440));
+    var negativeIntegrator = new LighterSigner(privateKey, 1, 0, 304, approvalClock).SignApproveIntegrator(
+        new ApproveIntegratorRequest(-1, 100, 50, 100, 50, 1_999_999_999_999),
+        50);
+    AssertEqual(
+        "f6988783cbb5c36b1c907d05eba46cf362b3bf84e2b2a5afc3b0c76a111cddc33f64fb18a7193ff0",
+        negativeIntegrator.TransactionHash,
+        "negative integrator index hash");
+
+    var leverageClock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_441));
+    var negativeMarket = new LighterSigner(privateKey, 1, 0, 304, leverageClock).SignUpdateLeverage(-1, 500, 0, 51);
+    AssertEqual(
+        "99423782871fb3b06e0655cb4f49a3e689daa608ab4091dbf6bbfc35c073489b0f506cb7e05e2f50",
+        negativeMarket.TransactionHash,
+        "negative leverage market hash");
+
+    var cancelClock = new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_784_267_548_442));
+    var spotCancel = new LighterSigner(privateKey, 1, 0, 304, cancelClock).SignCancelOrder(2048, 281_474_976_710_700, 52);
+    AssertEqual(
+        "8c9def27ab316cf32a8478353460f5174d67adada531648efff455989ea278e7a7646a7f2c5e85b7",
+        spotCancel.TransactionHash,
+        "spot-market cancel hash");
+
+    var strictSigner = new LighterSigner(privateKey, 1, 0, 304, cancelClock);
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => strictSigner.SignCancelOrder(7, 1L << 60, 52),
+        "cancel index above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => new LighterSigner(privateKey, 1, 255, 304, cancelClock),
+        "nil api key index");
+    return Task.CompletedTask;
+}
+
 static Task TestPublicSurfaceAsync()
 {
     var expected = new[]
     {
         "Lighter.Signer.LighterSigner",
+        "Lighter.Signer.Transactions.ApproveIntegratorRequest",
+        "Lighter.Signer.Transactions.L2TxAttributes",
+        "Lighter.Signer.Transactions.MarginMode",
+        "Lighter.Signer.Transactions.ModifyOrderRequest",
         "Lighter.Signer.Transactions.OrderRequest",
+        "Lighter.Signer.Transactions.OrderTimeInForce",
+        "Lighter.Signer.Transactions.OrderType",
+        "Lighter.Signer.Transactions.SelfTradeBehavior",
+        "Lighter.Signer.Transactions.SelfTradeEquality",
         "Lighter.Signer.Transactions.SignedTransaction",
         "Lighter.Signer.Transactions.TransferRequest",
     };
@@ -271,6 +640,26 @@ static void AssertSequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actua
         throw new InvalidOperationException(
             $"{description} did not match. Expected [{string.Join(',', expectedArray)}], actual [{string.Join(',', actualArray)}].");
     }
+}
+
+static void AssertThrows<TException>(Action action, string description)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+    catch (Exception exception)
+    {
+        throw new InvalidOperationException(
+            $"{description}: threw {exception.GetType().Name} instead of {typeof(TException).Name}");
+    }
+
+    throw new InvalidOperationException($"{description}: no exception was thrown");
 }
 
 static void AssertContains(string expected, string actual)

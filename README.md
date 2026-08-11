@@ -12,7 +12,7 @@ A fully managed, dependency-free .NET signer for [Lighter](https://lighter.xyz/)
 
 | Property | Value |
 |---|---|
-| Supported operations | Authentication, create order, cancel order, sub-account transfer |
+| Supported operations | Authentication, create order, modify order, cancel order, update leverage, approve integrator, sub-account transfer, L2 transaction attributes |
 | Implementation | Fully managed C#; no native libraries |
 | Package dependencies | None |
 | Target frameworks | .NET 8 and .NET 10; compatible with .NET 9 via the .NET 8 asset |
@@ -59,7 +59,7 @@ var signedOrder = signer.SignCreateOrder(
         TimeInForce: 1,
         ReduceOnly: false,
         TriggerPrice: 0,
-        OrderExpiry: DateTimeOffset.UtcNow.AddDays(28).ToUnixTimeMilliseconds()),
+        OrderExpiry: LighterSigner.Default28DayOrderExpiry),
     nonce: 42);
 
 // Submit signedOrder.TransactionType and signedOrder.TransactionInfo
@@ -68,14 +68,40 @@ var signedOrder = signer.SignCreateOrder(
 
 The values above are illustrative. Amounts and prices must be scaled using the target market's supported decimal precision.
 
+`OrderRequest` takes raw `byte` fields, so consumers can plug in their own models. The
+`OrderType`, `OrderTimeInForce`, `SelfTradeBehavior`, `SelfTradeEquality`, and `MarginMode`
+enums are optional conveniences; `OrderRequest.Create(...)` accepts the enums directly:
+
+```csharp
+var order = OrderRequest.Create(
+    marketIndex: 7,
+    clientOrderIndex: 123456,
+    baseAmount: 20_000_000,
+    price: 1_000_000,
+    isAsk: false,
+    type: OrderType.Limit,
+    timeInForce: OrderTimeInForce.GoodTillTime,
+    reduceOnly: false,
+    triggerPrice: 0,
+    orderExpiry: LighterSigner.Default28DayOrderExpiry);
+```
+
+An `OrderExpiry` of `-1` (`LighterSigner.Default28DayOrderExpiry`) signs the order with a
+28-day expiry, matching the official signers. All order types are supported: limit, market,
+stop-loss, stop-loss limit, take-profit, take-profit limit, and TWAP, on both perpetual and
+spot markets, with the same per-type validation rules as the Go signer.
+
 ## Supported operations
 
 | Method | Result |
 |---|---|
 | `CreateAuthToken(deadline)` | Time-limited authentication token |
-| `SignCreateOrder(order, nonce)` | Signed create-order transaction |
-| `SignCancelOrder(marketIndex, exchangeOrderIndex, nonce)` | Signed cancel-order transaction |
-| `SignTransfer(transfer, nonce)` | Signed sub-account transfer transaction |
+| `SignCreateOrder(order, nonce, attributes?)` | Signed create-order transaction |
+| `SignModifyOrder(modify, nonce, attributes?)` | Signed modify-order transaction |
+| `SignCancelOrder(marketIndex, exchangeOrderIndex, nonce, attributes?)` | Signed cancel-order transaction |
+| `SignUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce, attributes?)` | Signed update-leverage transaction |
+| `SignApproveIntegrator(approval, nonce, attributes?)` | Signed approve-integrator transaction |
+| `SignTransfer(transfer, nonce, attributes?)` | Signed sub-account transfer transaction |
 
 Each transaction-signing method returns a `SignedTransaction` containing:
 
@@ -84,6 +110,31 @@ Each transaction-signing method returns a `SignedTransaction` containing:
 - `TransactionHash` — hexadecimal hash of the signed transaction fields.
 
 The signer expects prepared inputs, including the correct chain ID, nonce, scaled market values, and exchange order index. Retrieving those values and submitting the resulting payload are responsibilities of the calling application.
+
+### L2 transaction attributes
+
+Every signing method accepts an optional `L2TxAttributes` for integrator fees, nonce
+skipping, and self-trade behavior. Set only the fields you need — at most four per
+transaction — and leave the rest `null`:
+
+```csharp
+var signedWithAttributes = signer.SignCreateOrder(order, nonce, new L2TxAttributes
+{
+    SelfTradeBehaviorMode = (byte)SelfTradeBehavior.CancelBoth,
+});
+```
+
+Attributes at their default values (for example a fee of `0`) appear in the payload but,
+matching the Go signer, do not change the transaction hash.
+
+### Transaction expiry
+
+Signed transactions expire `LighterSigner.DefaultTransactionExpiry` (ten minutes less a
+second) after signing. Adjust it per signer instance:
+
+```csharp
+signer.TransactionExpiry = TimeSpan.FromMinutes(5);
+```
 
 ## Security
 
