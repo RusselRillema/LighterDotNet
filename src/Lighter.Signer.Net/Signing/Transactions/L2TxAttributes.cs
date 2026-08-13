@@ -6,6 +6,7 @@ namespace Lighter.Signer.Transactions;
 /// </summary>
 public sealed record L2TxAttributes
 {
+    /// <summary>Account receiving the integrator fees; required when either fee is non-zero.</summary>
     public long? IntegratorAccountIndex { get; init; }
 
     /// <summary>Integrator taker fee in millionths; requires <see cref="IntegratorAccountIndex"/> when non-zero.</summary>

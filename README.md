@@ -87,9 +87,10 @@ var order = OrderRequest.Create(
 ```
 
 An `OrderExpiry` of `-1` (`LighterSigner.Default28DayOrderExpiry`) signs the order with a
-28-day expiry, matching the official signers. All order types are supported: limit, market,
-stop-loss, stop-loss limit, take-profit, take-profit limit, and TWAP, on both perpetual and
-spot markets, with the same per-type validation rules as the Go signer.
+28-day expiry, matching the official signers. All order types are supported — limit, market,
+stop-loss, stop-loss limit, take-profit, take-profit limit, and TWAP — with the same
+per-type validation rules as the Go signer; spot markets accept limit, market, and TWAP
+orders, while trigger orders and reduce-only are perpetual-market-only.
 
 ## Supported operations
 
@@ -113,8 +114,8 @@ The signer expects prepared inputs, including the correct chain ID, nonce, scale
 
 ### L2 transaction attributes
 
-Every signing method accepts an optional `L2TxAttributes` for integrator fees, nonce
-skipping, and self-trade behavior. Set only the fields you need — at most four per
+Every transaction-signing method accepts an optional `L2TxAttributes` for integrator fees,
+nonce skipping, and self-trade behavior. Set only the fields you need — at most four per
 transaction — and leave the rest `null`:
 
 ```csharp

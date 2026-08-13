@@ -15,8 +15,8 @@ internal static class L2TxAttributeCodec
     internal const byte SelfTradeEqualityModeType = 7;
 
     private const int MaxAttributesPerTransaction = 4;
-    private const long MaxIntegratorAccountIndex = 281_474_976_710_654;
-    private const long MaxIntegratorFee = 1_000_000;
+    internal const long MaxIntegratorAccountIndex = 281_474_976_710_654;
+    internal const long MaxIntegratorFee = 1_000_000;
 
     internal static SortedDictionary<byte, long>? ToValidatedMap(L2TxAttributes? attributes)
     {

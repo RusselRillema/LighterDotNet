@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <InvariantGlobalization>true</InvariantGlobalization>
     <PackageId>Lighter.Signer.Net</PackageId>
     <Version>0.1.0-preview.1</Version>

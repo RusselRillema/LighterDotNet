@@ -24,9 +24,7 @@ public sealed class LighterSigner
     private const long MaxClientOrderIndex = (1L << 48) - 1;
     private const long MaxOrderBaseAmount = (1L << 48) - 1;
     private const long MaxOrderIndex = (1L << 60) - 1;
-    private const long MinAccountIndex = -1;
-    private const long MaxAccountIndex = 281_474_976_710_654;
-    private const long MaxIntegratorFee = 1_000_000;
+    private const long MinIntegratorAccountIndex = -1;
     private const ushort MarginFractionTick = 10_000;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -42,6 +40,12 @@ public sealed class LighterSigner
     private readonly TimeProvider _timeProvider;
     private TimeSpan _transactionExpiry = DefaultTransactionExpiry;
 
+    /// <summary>Creates a signer bound to one account and api key.</summary>
+    /// <param name="privateKeyHex">The 40-byte api-key private key as 80 hexadecimal characters.</param>
+    /// <param name="accountIndex">The Lighter account index; must be positive.</param>
+    /// <param name="apiKeyIndex">The api-key slot, 0-254.</param>
+    /// <param name="chainId">304 for mainnet, 300 for testnet.</param>
+    /// <param name="timeProvider">Clock override for testing; defaults to the system clock.</param>
     public LighterSigner(
         string privateKeyHex,
         long accountIndex,
@@ -124,15 +128,12 @@ public sealed class LighterSigner
         ValidateCreateOrder(order, nonce);
         var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = L2TxAttributeCodec.AggregateTransactionHash(
-            Poseidon2.HashToFp5(
+        var hash = ComputeTransactionHash(
+            CreateOrderTransactionType,
+            nonce,
+            expiredAt,
+            attributeMap,
             [
-                new Goldilocks(_chainId),
-                new Goldilocks(CreateOrderTransactionType),
-                Goldilocks.FromSigned(nonce),
-                Goldilocks.FromSigned(expiredAt),
-                Goldilocks.FromSigned(_accountIndex),
-                new Goldilocks(_apiKeyIndex),
                 Goldilocks.FromSigned(order.MarketIndex),
                 Goldilocks.FromSigned(order.ClientOrderIndex),
                 Goldilocks.FromSigned(order.BaseAmount),
@@ -143,9 +144,7 @@ public sealed class LighterSigner
                 new Goldilocks(order.ReduceOnly ? 1UL : 0UL),
                 new Goldilocks(order.TriggerPrice),
                 Goldilocks.FromSigned(order.OrderExpiry),
-            ]),
-            attributeMap);
-        var signature = _signer.Sign(hash).ToBytes();
+            ]);
         var payload = new CreateOrderPayload
         {
             AccountIndex = _accountIndex,
@@ -162,47 +161,26 @@ public sealed class LighterSigner
             OrderExpiry = order.OrderExpiry,
             ExpiredAt = expiredAt,
             Nonce = nonce,
-            Sig = signature,
+            Sig = _signer.Sign(hash).ToBytes(),
             Attributes = attributeMap,
         };
-        return new SignedTransaction(
-            CreateOrderTransactionType,
-            JsonSerializer.Serialize(payload, JsonOptions),
-            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
+        return ToSignedTransaction(CreateOrderTransactionType, payload, hash);
     }
 
     public SignedTransaction SignCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
     {
-        if (!IsPerpetualMarket(marketIndex) && !IsSpotMarket(marketIndex))
-        {
-            throw new ArgumentOutOfRangeException(nameof(marketIndex), "Market index is invalid.");
-        }
-
-        if (exchangeOrderIndex is < 1 or > MaxOrderIndex)
-        {
-            throw new ArgumentOutOfRangeException(nameof(exchangeOrderIndex), "Order index is invalid.");
-        }
-
-        if (nonce < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(nonce));
-        }
-
+        ValidateCancelOrder(marketIndex, exchangeOrderIndex, nonce);
         var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = L2TxAttributeCodec.AggregateTransactionHash(
-            Poseidon2.HashToFp5(
+        var hash = ComputeTransactionHash(
+            CancelOrderTransactionType,
+            nonce,
+            expiredAt,
+            attributeMap,
             [
-                new Goldilocks(_chainId),
-                new Goldilocks(CancelOrderTransactionType),
-                Goldilocks.FromSigned(nonce),
-                Goldilocks.FromSigned(expiredAt),
-                Goldilocks.FromSigned(_accountIndex),
-                new Goldilocks(_apiKeyIndex),
                 Goldilocks.FromSigned(marketIndex),
                 Goldilocks.FromSigned(exchangeOrderIndex),
-            ]),
-            attributeMap);
+            ]);
         var payload = new CancelOrderPayload
         {
             AccountIndex = _accountIndex,
@@ -214,10 +192,7 @@ public sealed class LighterSigner
             Sig = _signer.Sign(hash).ToBytes(),
             Attributes = attributeMap,
         };
-        return new SignedTransaction(
-            CancelOrderTransactionType,
-            JsonSerializer.Serialize(payload, JsonOptions),
-            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
+        return ToSignedTransaction(CancelOrderTransactionType, payload, hash);
     }
 
     public SignedTransaction SignModifyOrder(ModifyOrderRequest modify, long nonce, L2TxAttributes? attributes = null)
@@ -226,28 +201,24 @@ public sealed class LighterSigner
         ValidateModifyOrder(modify, nonce);
         var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = L2TxAttributeCodec.AggregateTransactionHash(
-            Poseidon2.HashToFp5(
+        var hash = ComputeTransactionHash(
+            ModifyOrderTransactionType,
+            nonce,
+            expiredAt,
+            attributeMap,
             [
-                new Goldilocks(_chainId),
-                new Goldilocks(ModifyOrderTransactionType),
-                Goldilocks.FromSigned(nonce),
-                Goldilocks.FromSigned(expiredAt),
-                Goldilocks.FromSigned(_accountIndex),
-                new Goldilocks(_apiKeyIndex),
                 Goldilocks.FromSigned(modify.MarketIndex),
-                Goldilocks.FromSigned(modify.Index),
+                Goldilocks.FromSigned(modify.ExchangeOrderIndex),
                 Goldilocks.FromSigned(modify.BaseAmount),
                 new Goldilocks(modify.Price),
                 new Goldilocks(modify.TriggerPrice),
-            ]),
-            attributeMap);
+            ]);
         var payload = new ModifyOrderPayload
         {
             AccountIndex = _accountIndex,
             ApiKeyIndex = _apiKeyIndex,
             MarketIndex = modify.MarketIndex,
-            Index = modify.Index,
+            Index = modify.ExchangeOrderIndex,
             BaseAmount = modify.BaseAmount,
             Price = modify.Price,
             TriggerPrice = modify.TriggerPrice,
@@ -256,10 +227,7 @@ public sealed class LighterSigner
             Sig = _signer.Sign(hash).ToBytes(),
             Attributes = attributeMap,
         };
-        return new SignedTransaction(
-            ModifyOrderTransactionType,
-            JsonSerializer.Serialize(payload, JsonOptions),
-            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
+        return ToSignedTransaction(ModifyOrderTransactionType, payload, hash);
     }
 
     public SignedTransaction SignUpdateLeverage(
@@ -272,20 +240,16 @@ public sealed class LighterSigner
         ValidateUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce);
         var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = L2TxAttributeCodec.AggregateTransactionHash(
-            Poseidon2.HashToFp5(
+        var hash = ComputeTransactionHash(
+            UpdateLeverageTransactionType,
+            nonce,
+            expiredAt,
+            attributeMap,
             [
-                new Goldilocks(_chainId),
-                new Goldilocks(UpdateLeverageTransactionType),
-                Goldilocks.FromSigned(nonce),
-                Goldilocks.FromSigned(expiredAt),
-                Goldilocks.FromSigned(_accountIndex),
-                new Goldilocks(_apiKeyIndex),
                 Goldilocks.FromSigned(marketIndex),
                 new Goldilocks(initialMarginFraction),
                 new Goldilocks(marginMode),
-            ]),
-            attributeMap);
+            ]);
         var payload = new UpdateLeveragePayload
         {
             AccountIndex = _accountIndex,
@@ -298,10 +262,7 @@ public sealed class LighterSigner
             Sig = _signer.Sign(hash).ToBytes(),
             Attributes = attributeMap,
         };
-        return new SignedTransaction(
-            UpdateLeverageTransactionType,
-            JsonSerializer.Serialize(payload, JsonOptions),
-            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
+        return ToSignedTransaction(UpdateLeverageTransactionType, payload, hash);
     }
 
     public SignedTransaction SignApproveIntegrator(ApproveIntegratorRequest approval, long nonce, L2TxAttributes? attributes = null)
@@ -310,23 +271,19 @@ public sealed class LighterSigner
         ValidateApproveIntegrator(approval, nonce);
         var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = L2TxAttributeCodec.AggregateTransactionHash(
-            Poseidon2.HashToFp5(
+        var hash = ComputeTransactionHash(
+            ApproveIntegratorTransactionType,
+            nonce,
+            expiredAt,
+            attributeMap,
             [
-                new Goldilocks(_chainId),
-                new Goldilocks(ApproveIntegratorTransactionType),
-                Goldilocks.FromSigned(nonce),
-                Goldilocks.FromSigned(expiredAt),
-                Goldilocks.FromSigned(_accountIndex),
-                new Goldilocks(_apiKeyIndex),
                 Goldilocks.FromSigned(approval.IntegratorAccountIndex),
                 new Goldilocks(approval.MaxPerpsTakerFee),
                 new Goldilocks(approval.MaxPerpsMakerFee),
                 new Goldilocks(approval.MaxSpotTakerFee),
                 new Goldilocks(approval.MaxSpotMakerFee),
                 Goldilocks.FromSigned(approval.ApprovalExpiry),
-            ]),
-            attributeMap);
+            ]);
         var payload = new ApproveIntegratorPayload
         {
             AccountIndex = _accountIndex,
@@ -342,10 +299,7 @@ public sealed class LighterSigner
             Sig = _signer.Sign(hash).ToBytes(),
             Attributes = attributeMap,
         };
-        return new SignedTransaction(
-            ApproveIntegratorTransactionType,
-            JsonSerializer.Serialize(payload, JsonOptions),
-            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
+        return ToSignedTransaction(ApproveIntegratorTransactionType, payload, hash);
     }
 
     public SignedTransaction SignTransfer(TransferRequest transfer, long nonce, L2TxAttributes? attributes = null)
@@ -357,15 +311,12 @@ public sealed class LighterSigner
         var expiredAt = GetTransactionExpiryMilliseconds();
         var amount = (ulong)transfer.Amount;
         var fee = (ulong)transfer.UsdcFee;
-        var hash = L2TxAttributeCodec.AggregateTransactionHash(
-            Poseidon2.HashToFp5(
+        var hash = ComputeTransactionHash(
+            TransferTransactionType,
+            nonce,
+            expiredAt,
+            attributeMap,
             [
-                new Goldilocks(_chainId),
-                new Goldilocks(TransferTransactionType),
-                Goldilocks.FromSigned(nonce),
-                Goldilocks.FromSigned(expiredAt),
-                Goldilocks.FromSigned(_accountIndex),
-                new Goldilocks(_apiKeyIndex),
                 Goldilocks.FromSigned(transfer.ToAccountIndex),
                 Goldilocks.FromSigned(transfer.AssetIndex),
                 new Goldilocks(transfer.FromRouteType),
@@ -374,8 +325,7 @@ public sealed class LighterSigner
                 new Goldilocks(amount >> 32),
                 new Goldilocks(fee & uint.MaxValue),
                 new Goldilocks(fee >> 32),
-            ]),
-            attributeMap);
+            ]);
         var payload = new TransferPayload
         {
             FromAccountIndex = _accountIndex,
@@ -392,10 +342,7 @@ public sealed class LighterSigner
             Sig = _signer.Sign(hash).ToBytes(),
             Attributes = attributeMap,
         };
-        return new SignedTransaction(
-            TransferTransactionType,
-            JsonSerializer.Serialize(payload, JsonOptions),
-            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
+        return ToSignedTransaction(TransferTransactionType, payload, hash);
     }
 
     private long GetTransactionExpiryMilliseconds()
@@ -409,23 +356,72 @@ public sealed class LighterSigner
         return expiredAt;
     }
 
+    /// <summary>
+    /// Hashes the six-element framing shared by every transaction type, the transaction-specific
+    /// elements, and finally the aggregated attribute hash, mirroring the Go signer.
+    /// </summary>
+    private Fp5 ComputeTransactionHash(
+        byte transactionType,
+        long nonce,
+        long expiredAt,
+        SortedDictionary<byte, long>? attributeMap,
+        ReadOnlySpan<Goldilocks> transactionElements)
+    {
+        var elements = new Goldilocks[6 + transactionElements.Length];
+        elements[0] = new Goldilocks(_chainId);
+        elements[1] = new Goldilocks(transactionType);
+        elements[2] = Goldilocks.FromSigned(nonce);
+        elements[3] = Goldilocks.FromSigned(expiredAt);
+        elements[4] = Goldilocks.FromSigned(_accountIndex);
+        elements[5] = new Goldilocks(_apiKeyIndex);
+        transactionElements.CopyTo(elements.AsSpan(6));
+        return L2TxAttributeCodec.AggregateTransactionHash(Poseidon2.HashToFp5(elements), attributeMap);
+    }
+
+    private static SignedTransaction ToSignedTransaction<TPayload>(byte transactionType, TPayload payload, Fp5 hash) =>
+        new(
+            transactionType,
+            JsonSerializer.Serialize(payload, JsonOptions),
+            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
+
     private static bool IsPerpetualMarket(short marketIndex) => marketIndex is >= 0 and <= 254;
 
     private static bool IsSpotMarket(short marketIndex) => marketIndex is >= 2048 and <= 4094;
 
+    private static void ValidateMarketIndex(short marketIndex, string paramName)
+    {
+        if (!IsPerpetualMarket(marketIndex) && !IsSpotMarket(marketIndex))
+        {
+            throw new ArgumentOutOfRangeException(paramName, "Market index must be 0-254 (perpetual) or 2048-4094 (spot).");
+        }
+    }
+
+    private static void ValidateExchangeOrderIndex(long exchangeOrderIndex, string paramName)
+    {
+        if (exchangeOrderIndex is < 1 or > MaxOrderIndex)
+        {
+            throw new ArgumentOutOfRangeException(paramName, "Order index must be between 1 and 2^60 - 1.");
+        }
+    }
+
+    private static void ValidateNonce(long nonce)
+    {
+        if (nonce < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(nonce), "The nonce must be non-negative.");
+        }
+    }
+
     private static void ValidateCreateOrder(OrderRequest order, long nonce)
     {
+        ValidateMarketIndex(order.MarketIndex, nameof(order));
         var isPerpetualMarket = IsPerpetualMarket(order.MarketIndex);
         var isSpotMarket = IsSpotMarket(order.MarketIndex);
-        if (!isPerpetualMarket && !isSpotMarket)
-        {
-            throw new ArgumentOutOfRangeException(nameof(order), "Market index is invalid.");
-        }
 
         // Zero is the nil client order index and lets the exchange assign one.
         if (order.ClientOrderIndex is < 0 or > MaxClientOrderIndex)
         {
-            throw new ArgumentOutOfRangeException(nameof(order), "Client order index is invalid.");
+            throw new ArgumentOutOfRangeException(nameof(order), "Client order index must be 0 (exchange-assigned) or at most 2^48 - 1.");
         }
 
         if (!order.ReduceOnly && order.BaseAmount == 0)
@@ -435,18 +431,18 @@ public sealed class LighterSigner
 
         if (order.BaseAmount is < 0 or > MaxOrderBaseAmount)
         {
-            throw new ArgumentOutOfRangeException(nameof(order), "Base amount is invalid.");
+            throw new ArgumentOutOfRangeException(nameof(order), "Base amount must be non-negative and at most 2^48 - 1.");
         }
 
         // The upper price and trigger-price bounds (2^32 - 1) are implicit in the uint fields.
         if (order.Price == 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(order), "Price is invalid.");
+            throw new ArgumentOutOfRangeException(nameof(order), "Price must be at least 1.");
         }
 
         if (order.TimeInForce > (byte)OrderTimeInForce.PostOnly)
         {
-            throw new ArgumentException("The time in force is invalid.", nameof(order));
+            throw new ArgumentOutOfRangeException(nameof(order), "Time in force must be 0 (IOC), 1 (GTT), or 2 (post-only).");
         }
 
         if (order.ReduceOnly && isSpotMarket)
@@ -457,7 +453,7 @@ public sealed class LighterSigner
         // Zero is the nil order expiry; a -1 request was already replaced with the 28-day default.
         if (order.OrderExpiry < 0)
         {
-            throw new ArgumentException("The order expiry is invalid.", nameof(order));
+            throw new ArgumentOutOfRangeException(nameof(order), "Order expiry must be 0 (none) or a positive timestamp.");
         }
 
         switch (order.Type)
@@ -557,53 +553,49 @@ public sealed class LighterSigner
                 break;
 
             default:
-                throw new ArgumentException("The order type is invalid.", nameof(order));
+                throw new ArgumentException("Order type must be 0-6.", nameof(order));
         }
 
-        if (nonce < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(nonce), "The nonce must be non-negative.");
-        }
+        ValidateNonce(nonce);
+    }
+
+    private static void ValidateCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce)
+    {
+        ValidateMarketIndex(marketIndex, nameof(marketIndex));
+        ValidateExchangeOrderIndex(exchangeOrderIndex, nameof(exchangeOrderIndex));
+        ValidateNonce(nonce);
     }
 
     private static void ValidateModifyOrder(ModifyOrderRequest modify, long nonce)
     {
-        if (!IsPerpetualMarket(modify.MarketIndex) && !IsSpotMarket(modify.MarketIndex))
-        {
-            throw new ArgumentOutOfRangeException(nameof(modify), "Market index is invalid.");
-        }
-
-        if (modify.Index is < 1 or > MaxOrderIndex)
-        {
-            throw new ArgumentOutOfRangeException(nameof(modify), "Order index is invalid.");
-        }
+        ValidateMarketIndex(modify.MarketIndex, nameof(modify));
+        ValidateExchangeOrderIndex(modify.ExchangeOrderIndex, nameof(modify));
 
         // Zero keeps the current base amount.
         if (modify.BaseAmount is < 0 or > MaxOrderBaseAmount)
         {
-            throw new ArgumentOutOfRangeException(nameof(modify), "Base amount is invalid.");
+            throw new ArgumentOutOfRangeException(nameof(modify), "Base amount must be non-negative and at most 2^48 - 1.");
         }
 
         // The upper price and trigger-price bounds (2^32 - 1) are implicit in the uint fields.
         if (modify.Price == 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(modify), "Price is invalid.");
+            throw new ArgumentOutOfRangeException(nameof(modify), "Price must be at least 1.");
         }
 
-        if (nonce < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(nonce), "The nonce must be non-negative.");
-        }
+        ValidateNonce(nonce);
     }
 
     private static void ValidateUpdateLeverage(short marketIndex, ushort initialMarginFraction, byte marginMode, long nonce)
     {
+        // Matching Go, update-leverage only rejects the nil market sentinel (255); any other
+        // index, including negative ones, is signable (pinned by a known-answer vector).
         if (marketIndex == 255)
         {
-            throw new ArgumentOutOfRangeException(nameof(marketIndex), "Market index is invalid.");
+            throw new ArgumentOutOfRangeException(nameof(marketIndex), "Market index 255 is the nil sentinel and cannot be used.");
         }
 
-        if (marginMode > (byte)Transactions.MarginMode.Isolated)
+        if (marginMode > (byte)MarginMode.Isolated)
         {
             throw new ArgumentOutOfRangeException(nameof(marginMode), "Margin mode must be cross (0) or isolated (1).");
         }
@@ -615,25 +607,22 @@ public sealed class LighterSigner
                 "The initial margin fraction must be between 1 and 10000.");
         }
 
-        if (nonce < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(nonce), "The nonce must be non-negative.");
-        }
+        ValidateNonce(nonce);
     }
 
     private static void ValidateApproveIntegrator(ApproveIntegratorRequest approval, long nonce)
     {
-        if (approval.IntegratorAccountIndex is < MinAccountIndex or > MaxAccountIndex)
+        if (approval.IntegratorAccountIndex is < MinIntegratorAccountIndex or > L2TxAttributeCodec.MaxIntegratorAccountIndex)
         {
-            throw new ArgumentOutOfRangeException(nameof(approval), "Integrator account index is invalid.");
+            throw new ArgumentOutOfRangeException(nameof(approval), "Integrator account index must be between -1 and 2^48 - 2.");
         }
 
-        if (approval.MaxPerpsTakerFee > MaxIntegratorFee ||
-            approval.MaxPerpsMakerFee > MaxIntegratorFee ||
-            approval.MaxSpotTakerFee > MaxIntegratorFee ||
-            approval.MaxSpotMakerFee > MaxIntegratorFee)
+        if (approval.MaxPerpsTakerFee > L2TxAttributeCodec.MaxIntegratorFee ||
+            approval.MaxPerpsMakerFee > L2TxAttributeCodec.MaxIntegratorFee ||
+            approval.MaxSpotTakerFee > L2TxAttributeCodec.MaxIntegratorFee ||
+            approval.MaxSpotMakerFee > L2TxAttributeCodec.MaxIntegratorFee)
         {
-            throw new ArgumentOutOfRangeException(nameof(approval), "Integrator fees cannot exceed the fee tick.");
+            throw new ArgumentOutOfRangeException(nameof(approval), "Integrator fees cannot exceed the fee tick (1,000,000).");
         }
 
         // A zero approval expiry revokes the approval, which only makes sense with zero fees.
@@ -646,13 +635,10 @@ public sealed class LighterSigner
 
         if (approval.ApprovalExpiry is < 0 or > MaxTimestampMilliseconds)
         {
-            throw new ArgumentOutOfRangeException(nameof(approval), "The approval expiry is invalid.");
+            throw new ArgumentOutOfRangeException(nameof(approval), "Approval expiry must be between 0 and 2^48 - 1.");
         }
 
-        if (nonce < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(nonce), "The nonce must be non-negative.");
-        }
+        ValidateNonce(nonce);
     }
 
     private static void ValidateTransfer(TransferRequest transfer, long nonce)
@@ -664,17 +650,19 @@ public sealed class LighterSigner
 
         if (transfer.AssetIndex < 0 || transfer.FromRouteType > 1 || transfer.ToRouteType > 1)
         {
-            throw new ArgumentException("The transfer asset or route type is invalid.", nameof(transfer));
+            throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer asset index must be non-negative and route types 0 (perps) or 1 (spot).");
         }
 
-        if (transfer.Amount <= 0 || transfer.UsdcFee < 0 || nonce < 0)
+        if (transfer.Amount <= 0 || transfer.UsdcFee < 0)
         {
-            throw new ArgumentException("The transfer amount, fee, or nonce is invalid.", nameof(transfer));
+            throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer amount must be positive and the fee non-negative.");
         }
 
         if (transfer.Memo is null || transfer.Memo.Length != 32)
         {
             throw new ArgumentException("The transfer memo must contain exactly 32 bytes.", nameof(transfer));
         }
+
+        ValidateNonce(nonce);
     }
 }
