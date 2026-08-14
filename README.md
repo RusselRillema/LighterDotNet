@@ -110,7 +110,7 @@ Each transaction-signing method returns a `SignedTransaction` containing:
 - `TransactionInfo` — serialized signed payload for submission.
 - `TransactionHash` — hexadecimal hash of the signed transaction fields.
 
-The signer expects prepared inputs, including the correct chain ID, nonce, scaled market values, and exchange order index. Retrieving those values and submitting the resulting payload are responsibilities of the calling application.
+The signer expects prepared inputs, including the correct chain ID, nonce, scaled market values, and exchange order index. Retrieving those values and submitting the resulting payload are responsibilities of the calling application. `ExchangeConstants` exposes the exchange's protocol bounds (market index ranges, order index limits, fee tick, and so on) for client-side validation.
 
 ### L2 transaction attributes
 

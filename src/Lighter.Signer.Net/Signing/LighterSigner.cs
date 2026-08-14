@@ -20,13 +20,6 @@ public sealed class LighterSigner
 
     public static readonly TimeSpan DefaultTransactionExpiry = TimeSpan.FromMinutes(10) - TimeSpan.FromSeconds(1);
 
-    private const long MaxTimestampMilliseconds = (1L << 48) - 1;
-    private const long MaxClientOrderIndex = (1L << 48) - 1;
-    private const long MaxOrderBaseAmount = (1L << 48) - 1;
-    private const long MaxOrderIndex = (1L << 60) - 1;
-    private const long MinIntegratorAccountIndex = -1;
-    private const ushort MarginFractionTick = 10_000;
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = null,
@@ -59,7 +52,7 @@ public sealed class LighterSigner
         }
 
         // 255 is the nil api-key sentinel, which the exchange refuses to sign for.
-        if (apiKeyIndex == 255)
+        if (apiKeyIndex > ExchangeConstants.MaxApiKeyIndex)
         {
             throw new ArgumentOutOfRangeException(nameof(apiKeyIndex), "API key index must be at most 254.");
         }
@@ -348,7 +341,7 @@ public sealed class LighterSigner
     private long GetTransactionExpiryMilliseconds()
     {
         var expiredAt = _timeProvider.GetUtcNow().Add(_transactionExpiry).ToUnixTimeMilliseconds();
-        if (expiredAt is < 0 or > MaxTimestampMilliseconds)
+        if (expiredAt is < 0 or > ExchangeConstants.MaxTimestampMilliseconds)
         {
             throw new InvalidOperationException("The computed transaction expiry timestamp is out of range.");
         }
@@ -384,9 +377,11 @@ public sealed class LighterSigner
             JsonSerializer.Serialize(payload, JsonOptions),
             Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
 
-    private static bool IsPerpetualMarket(short marketIndex) => marketIndex is >= 0 and <= 254;
+    private static bool IsPerpetualMarket(short marketIndex) =>
+        marketIndex is >= ExchangeConstants.MinPerpetualMarketIndex and <= ExchangeConstants.MaxPerpetualMarketIndex;
 
-    private static bool IsSpotMarket(short marketIndex) => marketIndex is >= 2048 and <= 4094;
+    private static bool IsSpotMarket(short marketIndex) =>
+        marketIndex is >= ExchangeConstants.MinSpotMarketIndex and <= ExchangeConstants.MaxSpotMarketIndex;
 
     private static void ValidateMarketIndex(short marketIndex, string paramName)
     {
@@ -398,7 +393,8 @@ public sealed class LighterSigner
 
     private static void ValidateExchangeOrderIndex(long exchangeOrderIndex, string paramName)
     {
-        if (exchangeOrderIndex is < 1 or > MaxOrderIndex)
+        // Accepts client order indices too, so the lower bound is MinClientOrderIndex.
+        if (exchangeOrderIndex is < ExchangeConstants.MinClientOrderIndex or > ExchangeConstants.MaxOrderIndex)
         {
             throw new ArgumentOutOfRangeException(paramName, "Order index must be between 1 and 2^60 - 1.");
         }
@@ -419,7 +415,7 @@ public sealed class LighterSigner
         var isSpotMarket = IsSpotMarket(order.MarketIndex);
 
         // Zero is the nil client order index and lets the exchange assign one.
-        if (order.ClientOrderIndex is < 0 or > MaxClientOrderIndex)
+        if (order.ClientOrderIndex is < ExchangeConstants.NilClientOrderIndex or > ExchangeConstants.MaxClientOrderIndex)
         {
             throw new ArgumentOutOfRangeException(nameof(order), "Client order index must be 0 (exchange-assigned) or at most 2^48 - 1.");
         }
@@ -429,13 +425,13 @@ public sealed class LighterSigner
             throw new ArgumentOutOfRangeException(nameof(order), "Base amount is required for orders that are not reduce-only.");
         }
 
-        if (order.BaseAmount is < 0 or > MaxOrderBaseAmount)
+        if (order.BaseAmount is < 0 or > ExchangeConstants.MaxOrderBaseAmount)
         {
             throw new ArgumentOutOfRangeException(nameof(order), "Base amount must be non-negative and at most 2^48 - 1.");
         }
 
         // The upper price and trigger-price bounds (2^32 - 1) are implicit in the uint fields.
-        if (order.Price == 0)
+        if (order.Price < ExchangeConstants.MinOrderPrice)
         {
             throw new ArgumentOutOfRangeException(nameof(order), "Price must be at least 1.");
         }
@@ -572,13 +568,13 @@ public sealed class LighterSigner
         ValidateExchangeOrderIndex(modify.ExchangeOrderIndex, nameof(modify));
 
         // Zero keeps the current base amount.
-        if (modify.BaseAmount is < 0 or > MaxOrderBaseAmount)
+        if (modify.BaseAmount is < 0 or > ExchangeConstants.MaxOrderBaseAmount)
         {
             throw new ArgumentOutOfRangeException(nameof(modify), "Base amount must be non-negative and at most 2^48 - 1.");
         }
 
         // The upper price and trigger-price bounds (2^32 - 1) are implicit in the uint fields.
-        if (modify.Price == 0)
+        if (modify.Price < ExchangeConstants.MinOrderPrice)
         {
             throw new ArgumentOutOfRangeException(nameof(modify), "Price must be at least 1.");
         }
@@ -590,7 +586,7 @@ public sealed class LighterSigner
     {
         // Matching Go, update-leverage only rejects the nil market sentinel (255); any other
         // index, including negative ones, is signable (pinned by a known-answer vector).
-        if (marketIndex == 255)
+        if (marketIndex == ExchangeConstants.NilMarketIndex)
         {
             throw new ArgumentOutOfRangeException(nameof(marketIndex), "Market index 255 is the nil sentinel and cannot be used.");
         }
@@ -600,7 +596,7 @@ public sealed class LighterSigner
             throw new ArgumentOutOfRangeException(nameof(marginMode), "Margin mode must be cross (0) or isolated (1).");
         }
 
-        if (initialMarginFraction is 0 or > MarginFractionTick)
+        if (initialMarginFraction is 0 or > ExchangeConstants.MarginFractionTick)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(initialMarginFraction),
@@ -612,15 +608,15 @@ public sealed class LighterSigner
 
     private static void ValidateApproveIntegrator(ApproveIntegratorRequest approval, long nonce)
     {
-        if (approval.IntegratorAccountIndex is < MinIntegratorAccountIndex or > L2TxAttributeCodec.MaxIntegratorAccountIndex)
+        if (approval.IntegratorAccountIndex is < ExchangeConstants.MinAccountIndex or > ExchangeConstants.MaxAccountIndex)
         {
             throw new ArgumentOutOfRangeException(nameof(approval), "Integrator account index must be between -1 and 2^48 - 2.");
         }
 
-        if (approval.MaxPerpsTakerFee > L2TxAttributeCodec.MaxIntegratorFee ||
-            approval.MaxPerpsMakerFee > L2TxAttributeCodec.MaxIntegratorFee ||
-            approval.MaxSpotTakerFee > L2TxAttributeCodec.MaxIntegratorFee ||
-            approval.MaxSpotMakerFee > L2TxAttributeCodec.MaxIntegratorFee)
+        if (approval.MaxPerpsTakerFee > ExchangeConstants.FeeTick ||
+            approval.MaxPerpsMakerFee > ExchangeConstants.FeeTick ||
+            approval.MaxSpotTakerFee > ExchangeConstants.FeeTick ||
+            approval.MaxSpotMakerFee > ExchangeConstants.FeeTick)
         {
             throw new ArgumentOutOfRangeException(nameof(approval), "Integrator fees cannot exceed the fee tick (1,000,000).");
         }
@@ -633,7 +629,7 @@ public sealed class LighterSigner
             throw new ArgumentException("A revocation (zero approval expiry) requires all fees to be zero.", nameof(approval));
         }
 
-        if (approval.ApprovalExpiry is < 0 or > MaxTimestampMilliseconds)
+        if (approval.ApprovalExpiry is < 0 or > ExchangeConstants.MaxTimestampMilliseconds)
         {
             throw new ArgumentOutOfRangeException(nameof(approval), "Approval expiry must be between 0 and 2^48 - 1.");
         }

@@ -525,6 +525,7 @@ static Task TestPublicSurfaceAsync()
     {
         "Lighter.Signer.LighterSigner",
         "Lighter.Signer.Transactions.ApproveIntegratorRequest",
+        "Lighter.Signer.Transactions.ExchangeConstants",
         "Lighter.Signer.Transactions.L2TxAttributes",
         "Lighter.Signer.Transactions.MarginMode",
         "Lighter.Signer.Transactions.ModifyOrderRequest",

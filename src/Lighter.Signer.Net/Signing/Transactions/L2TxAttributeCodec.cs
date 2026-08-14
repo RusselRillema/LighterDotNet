@@ -14,10 +14,6 @@ internal static class L2TxAttributeCodec
     internal const byte SelfTradeBehaviorModeType = 6;
     internal const byte SelfTradeEqualityModeType = 7;
 
-    private const int MaxAttributesPerTransaction = 4;
-    internal const long MaxIntegratorAccountIndex = 281_474_976_710_654;
-    internal const long MaxIntegratorFee = 1_000_000;
-
     internal static SortedDictionary<byte, long>? ToValidatedMap(L2TxAttributes? attributes)
     {
         if (attributes is null)
@@ -61,7 +57,7 @@ internal static class L2TxAttributeCodec
             return null;
         }
 
-        if (map.Count > MaxAttributesPerTransaction)
+        if (map.Count > ExchangeConstants.MaxAttributesPerTransaction)
         {
             throw new ArgumentException(
                 "A transaction supports at most four L2 transaction attributes.",
@@ -72,8 +68,8 @@ internal static class L2TxAttributeCodec
         {
             var (minValue, maxValue) = attributeType switch
             {
-                IntegratorAccountIndexType => (0L, MaxIntegratorAccountIndex),
-                IntegratorTakerFeeType or IntegratorMakerFeeType => (0L, MaxIntegratorFee),
+                IntegratorAccountIndexType => (0L, ExchangeConstants.MaxAccountIndex),
+                IntegratorTakerFeeType or IntegratorMakerFeeType => (0L, ExchangeConstants.FeeTick),
                 SkipNonceType => (1L, 1L),
                 SelfTradeBehaviorModeType => (0L, 3L),
                 SelfTradeEqualityModeType => (0L, 1L),
@@ -124,7 +120,7 @@ internal static class L2TxAttributeCodec
 
         // Real-valued attributes fill (type, value) pairs in ascending type order; the remaining
         // slots stay (0, 0). Nil-valued entries participate in JSON but never in the hash.
-        var elements = new Goldilocks[2 * MaxAttributesPerTransaction];
+        var elements = new Goldilocks[2 * ExchangeConstants.MaxAttributesPerTransaction];
         var slot = 0;
         foreach (var (attributeType, value) in attributes)
         {
