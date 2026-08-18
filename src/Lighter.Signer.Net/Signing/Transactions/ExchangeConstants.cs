@@ -51,6 +51,15 @@ public static class ExchangeConstants
     /// <summary>Highest exchange-assigned order index (2^60 - 1). Mirrors Go's MaxOrderIndex.</summary>
     public const long MaxOrderIndex = (1L << 60) - 1;
 
+    /// <summary>Lowest transferable asset index; 0 is the nil sentinel. Mirrors Go's MinAssetIndex.</summary>
+    public const short MinAssetIndex = 1;
+
+    /// <summary>Highest transferable asset index (2^6 - 2). Mirrors Go's MaxAssetIndex.</summary>
+    public const short MaxAssetIndex = 62;
+
+    /// <summary>Highest transfer amount and fee (2^60 - 1). Mirrors Go's MaxTransferAmount.</summary>
+    public const long MaxTransferAmount = (1L << 60) - 1;
+
     /// <summary>Lowest non-nil order base amount. Mirrors Go's MinOrderBaseAmount.</summary>
     public const long MinOrderBaseAmount = 1;
 

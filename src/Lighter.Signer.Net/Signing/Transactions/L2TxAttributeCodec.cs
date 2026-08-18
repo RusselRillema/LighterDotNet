@@ -71,15 +71,17 @@ internal static class L2TxAttributeCodec
                 IntegratorAccountIndexType => (0L, ExchangeConstants.MaxAccountIndex),
                 IntegratorTakerFeeType or IntegratorMakerFeeType => (0L, ExchangeConstants.FeeTick),
                 SkipNonceType => (1L, 1L),
-                SelfTradeBehaviorModeType => (0L, 3L),
-                SelfTradeEqualityModeType => (0L, 1L),
+                SelfTradeBehaviorModeType => (0L, (long)SelfTradeBehavior.Reduce),
+                SelfTradeEqualityModeType => (0L, (long)SelfTradeEquality.MasterAccountIndex),
                 _ => throw new ArgumentException("The attribute type is unknown.", nameof(attributes)),
             };
             if (value < minValue || value > maxValue)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(attributes),
-                    $"The L2 transaction attribute {attributeType} value {value} is out of range.");
+                    string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $"The L2 transaction attribute {attributeType} value {value} is out of range."));
             }
         }
 
