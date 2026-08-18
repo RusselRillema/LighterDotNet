@@ -292,13 +292,18 @@ public sealed class LighterSigner
             Sig = _signer.Sign(hash).ToBytes(),
             Attributes = attributeMap,
         };
-        return ToSignedTransaction(ApproveIntegratorTransactionType, payload, hash);
+        return ToSignedTransaction(
+            ApproveIntegratorTransactionType,
+            payload,
+            hash,
+            BuildApproveIntegratorL1SignatureBody(approval, nonce));
     }
 
     public SignedTransaction SignTransfer(TransferRequest transfer, long nonce, L2TxAttributes? attributes = null)
     {
         ArgumentNullException.ThrowIfNull(transfer);
         ValidateTransfer(transfer, nonce);
+        var memo = DecodeTransferMemo(transfer.Memo);
 
         var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
@@ -329,7 +334,7 @@ public sealed class LighterSigner
             ToRouteType = transfer.ToRouteType,
             Amount = transfer.Amount,
             UsdcFee = transfer.UsdcFee,
-            Memo = transfer.Memo.Select(value => (int)value).ToArray(),
+            Memo = memo.Select(value => (int)value).ToArray(),
             ExpiredAt = expiredAt,
             Nonce = nonce,
             Sig = _signer.Sign(hash).ToBytes(),
@@ -371,11 +376,78 @@ public sealed class LighterSigner
         return L2TxAttributeCodec.AggregateTransactionHash(Poseidon2.HashToFp5(elements), attributeMap);
     }
 
-    private static SignedTransaction ToSignedTransaction<TPayload>(byte transactionType, TPayload payload, Fp5 hash) =>
+    private static SignedTransaction ToSignedTransaction<TPayload>(
+        byte transactionType,
+        TPayload payload,
+        Fp5 hash,
+        string? l1SignatureBody = null) =>
         new(
             transactionType,
             JsonSerializer.Serialize(payload, JsonOptions),
-            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant());
+            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant(),
+            l1SignatureBody);
+
+    /// <summary>
+    /// The memo travels as exactly 32 bytes; matching the Go signer, the string form must be
+    /// 32 raw characters or 32 hex-encoded bytes (64 characters, optionally 0x-prefixed).
+    /// </summary>
+    private static byte[] DecodeTransferMemo(string memo)
+    {
+        var value = memo;
+        if (value.Length == 66)
+        {
+            if (!value.StartsWith("0x", StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "A 66-character memo must be 0x-prefixed hex.",
+                    nameof(memo));
+            }
+
+            value = value[2..];
+        }
+
+        if (value.Length == 64)
+        {
+            try
+            {
+                return Convert.FromHexString(value);
+            }
+            catch (FormatException exception)
+            {
+                throw new ArgumentException("The memo hex encoding is invalid.", nameof(memo), exception);
+            }
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(value);
+        if (bytes.Length != 32)
+        {
+            throw new ArgumentException(
+                "The memo must be exactly 32 bytes, or 32 bytes hex-encoded (64 characters, optionally 0x-prefixed).",
+                nameof(memo));
+        }
+
+        return bytes;
+    }
+
+    // Mirrors the Go signer's GetL1SignatureBody template: every value rendered as
+    // "0x" + 16 zero-padded lowercase hex characters, negatives via two's complement.
+    private string BuildApproveIntegratorL1SignatureBody(ApproveIntegratorRequest approval, long nonce) =>
+        "Approve Integrator\n\n" +
+        $"nonce: {ToHex16(unchecked((ulong)nonce))}\n" +
+        $"account index: {ToHex16(unchecked((ulong)_accountIndex))}\n" +
+        $"api key index: {ToHex16(_apiKeyIndex)}\n" +
+        $"integrator account index: {ToHex16(unchecked((ulong)approval.IntegratorAccountIndex))}\n" +
+        $"max perps taker fee: {ToHex16(approval.MaxPerpsTakerFee)}\n" +
+        $"max perps maker fee: {ToHex16(approval.MaxPerpsMakerFee)}\n" +
+        $"max spot taker fee: {ToHex16(approval.MaxSpotTakerFee)}\n" +
+        $"max spot maker fee: {ToHex16(approval.MaxSpotMakerFee)}\n" +
+        $"approval expiry: {ToHex16(unchecked((ulong)approval.ApprovalExpiry))}\n" +
+        $"chainId: {ToHex16(_chainId)}\n" +
+        "Only sign this message for a trusted client!";
+
+    private static string ToHex16(ulong value) => string.Create(
+        System.Globalization.CultureInfo.InvariantCulture,
+        $"0x{value:x16}");
 
     private static bool IsPerpetualMarket(short marketIndex) =>
         marketIndex is >= ExchangeConstants.MinPerpetualMarketIndex and <= ExchangeConstants.MaxPerpetualMarketIndex;
@@ -654,9 +726,9 @@ public sealed class LighterSigner
             throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer amount must be positive and the fee non-negative.");
         }
 
-        if (transfer.Memo is null || transfer.Memo.Length != 32)
+        if (transfer.Memo is null)
         {
-            throw new ArgumentException("The transfer memo must contain exactly 32 bytes.", nameof(transfer));
+            throw new ArgumentException("The transfer memo is required.", nameof(transfer));
         }
 
         ValidateNonce(nonce);

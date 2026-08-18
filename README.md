@@ -109,6 +109,12 @@ Each transaction-signing method returns a `SignedTransaction` containing:
 - `TransactionType` — Lighter transaction type identifier.
 - `TransactionInfo` — serialized signed payload for submission.
 - `TransactionHash` — hexadecimal hash of the signed transaction fields.
+- `L1SignatureBody` — for approve-integrator transactions, the human-readable message an
+  account's L1 (Ethereum) key signs to authorize the approval; `null` otherwise.
+
+The transfer memo is a string carrying exactly 32 bytes: 32 raw characters, or 64 hex
+characters (optionally `0x`-prefixed). Matching the official signers, shorter memos are not
+padded automatically.
 
 The signer expects prepared inputs, including the correct chain ID, nonce, scaled market values, and exchange order index. Retrieving those values and submitting the resulting payload are responsibilities of the calling application. `ExchangeConstants` exposes the exchange's protocol bounds (market index ranges, order index limits, fee tick, and so on) for client-side validation.
 

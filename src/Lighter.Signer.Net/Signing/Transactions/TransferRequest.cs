@@ -7,7 +7,10 @@ namespace Lighter.Signer.Transactions;
 /// <param name="ToRouteType">0 = perps, 1 = spot.</param>
 /// <param name="Amount">Scaled amount; must be positive.</param>
 /// <param name="UsdcFee">Scaled USDC fee; non-negative.</param>
-/// <param name="Memo">Exactly 32 bytes.</param>
+/// <param name="Memo">
+/// Exactly 32 bytes, given as 32 raw characters or as 64 hex characters (optionally
+/// 0x-prefixed). Shorter memos must be padded by the caller; the signer does not pad.
+/// </param>
 public sealed record TransferRequest(
     long ToAccountIndex,
     short AssetIndex,
@@ -15,4 +18,4 @@ public sealed record TransferRequest(
     byte ToRouteType,
     long Amount,
     long UsdcFee,
-    byte[] Memo);
+    string Memo);
