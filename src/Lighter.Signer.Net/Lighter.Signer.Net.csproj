@@ -9,7 +9,7 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <InvariantGlobalization>true</InvariantGlobalization>
     <PackageId>Lighter.Signer.Net</PackageId>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.2.0-preview.1</Version>
     <Authors>Russel Rillema</Authors>
     <Copyright>Copyright (c) 2026 Russel Rillema</Copyright>
     <Title>Lighter Signer for .NET</Title>

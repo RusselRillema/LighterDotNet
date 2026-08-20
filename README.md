@@ -21,14 +21,14 @@ A fully managed, dependency-free .NET signer for [Lighter](https://lighter.xyz/)
 ## Installation
 
 ```bash
-dotnet add package Lighter.Signer.Net --version 0.1.0-preview.1
+dotnet add package Lighter.Signer.Net --version 0.2.0-preview.1
 ```
 
 To install a package built from this repository:
 
 ```bash
 dotnet pack src/Lighter.Signer.Net/Lighter.Signer.Net.csproj -c Release -o artifacts
-dotnet add package Lighter.Signer.Net --version 0.1.0-preview.1 --source artifacts
+dotnet add package Lighter.Signer.Net --version 0.2.0-preview.1 --source artifacts
 ```
 
 ## Quick start

@@ -46,8 +46,8 @@ public sealed class LighterSigner
         uint chainId,
         TimeProvider? timeProvider = null)
     {
-        if (accountIndex <= 0)
-            throw new ArgumentOutOfRangeException(nameof(accountIndex), "Account index must be positive.");
+        if (accountIndex <= 0 || accountIndex > ExchangeConstants.MaxAccountIndex)
+            throw new ArgumentOutOfRangeException(nameof(accountIndex), "Account index must be between 1 and 2^48 - 2.");
 
         // 255 is the nil api-key sentinel, which the exchange refuses to sign for.
         if (apiKeyIndex > ExchangeConstants.MaxApiKeyIndex)
@@ -62,14 +62,17 @@ public sealed class LighterSigner
 
     public string PublicKeyHex => Convert.ToHexString(_signer.PublicKey.ToLittleEndianBytes()).ToLowerInvariant();
 
-    /// <summary>How far in the future signed transactions expire. Defaults to ten minutes less a second.</summary>
+    /// <summary>
+    /// How far in the future signed transactions expire. Defaults to ten minutes less a second.
+    /// Set before sharing the signer across threads; mutation is not synchronized with signing.
+    /// </summary>
     public TimeSpan TransactionExpiry
     {
         get => _transactionExpiry;
         set
         {
-            if (value <= TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(nameof(value), "The transaction expiry must be positive.");
+            if (value <= TimeSpan.Zero || value.TotalMilliseconds > ExchangeConstants.MaxTimestampMilliseconds)
+                throw new ArgumentOutOfRangeException(nameof(value), "The transaction expiry must be positive and at most 2^48 - 1 milliseconds.");
 
             _transactionExpiry = value;
         }
@@ -331,8 +334,17 @@ public sealed class LighterSigner
 
     private long GetTransactionExpiryMilliseconds()
     {
-        var expiredAt = _timeProvider.GetUtcNow().Add(_transactionExpiry).ToUnixTimeMilliseconds();
-        if (expiredAt is < 0 or > ExchangeConstants.MaxTimestampMilliseconds)
+        var now = _timeProvider.GetUtcNow();
+        if (_transactionExpiry > DateTimeOffset.MaxValue - now)
+        {
+            throw new InvalidOperationException("The transaction expiry extends beyond the representable time range.");
+        }
+
+        var expiredAt = now.Add(_transactionExpiry).ToUnixTimeMilliseconds();
+
+        // DateTimeOffset.MaxValue (year 9999) is below the 2^48 - 1 ms protocol cap, so only a
+        // pre-epoch clock can produce an out-of-range timestamp here.
+        if (expiredAt < 0)
         {
             throw new InvalidOperationException("The computed transaction expiry timestamp is out of range.");
         }
@@ -697,19 +709,30 @@ public sealed class LighterSigner
 
     private static void ValidateTransfer(TransferRequest transfer, long nonce)
     {
-        if (transfer.ToAccountIndex <= 0)
+        // Matching Go, -1 and 0 (the treasury account) are valid transfer destinations.
+        if (transfer.ToAccountIndex is < ExchangeConstants.MinAccountIndex or > ExchangeConstants.MaxAccountIndex)
         {
-            throw new ArgumentOutOfRangeException(nameof(transfer), "Destination account index must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(transfer), "Destination account index must be between -1 and 2^48 - 2.");
         }
 
-        if (transfer.AssetIndex < 0 || transfer.FromRouteType > 1 || transfer.ToRouteType > 1)
+        if (transfer.AssetIndex is < ExchangeConstants.MinAssetIndex or > ExchangeConstants.MaxAssetIndex)
         {
-            throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer asset index must be non-negative and route types 0 (perps) or 1 (spot).");
+            throw new ArgumentOutOfRangeException(nameof(transfer), "Asset index must be between 1 and 62.");
         }
 
-        if (transfer.Amount <= 0 || transfer.UsdcFee < 0)
+        if (transfer.FromRouteType > 1 || transfer.ToRouteType > 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer amount must be positive and the fee non-negative.");
+            throw new ArgumentOutOfRangeException(nameof(transfer), "Route types must be 0 (perps) or 1 (spot).");
+        }
+
+        if (transfer.Amount is <= 0 or > ExchangeConstants.MaxTransferAmount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer amount must be between 1 and 2^60 - 1.");
+        }
+
+        if (transfer.UsdcFee is < 0 or > ExchangeConstants.MaxTransferAmount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer fee must be between 0 and 2^60 - 1.");
         }
 
         if (transfer.Memo is null)

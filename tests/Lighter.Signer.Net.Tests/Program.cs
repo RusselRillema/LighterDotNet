@@ -21,6 +21,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Transaction hashes match official Go signer", TestTransactionHashesAsync),
     ("Sub-account transfer matches official Go signer", TestTransferHashAsync),
     ("Transfer memo decoding matches Go signer rules", TestTransferMemoDecodingAsync),
+    ("Transfer bounds match official Go signer", TestTransferBoundsAsync),
+    ("Modify, leverage, and approval validation reject invalid inputs", TestNewValidatorRejectionsAsync),
     ("Create order defaults 28-day expiry", TestDefaultOrderExpiryAsync),
     ("Modify order hash matches official Go signer", TestModifyOrderHashAsync),
     ("Update leverage hash matches official Go signer", TestUpdateLeverageHashAsync),
@@ -181,6 +183,100 @@ static Task TestTransferMemoDecodingAsync()
     AssertThrows<ArgumentException>(() => Sign(new string('a', 33)), "33-character memo");
     AssertThrows<ArgumentException>(() => Sign(new string('z', 64)), "64 non-hex characters");
     AssertThrows<ArgumentException>(() => Sign(new string('a', 66)), "66 characters without 0x prefix");
+    return Task.CompletedTask;
+}
+
+static Task TestTransferBoundsAsync()
+{
+    // Matching Go, the treasury account (0) and -1 are valid transfer destinations.
+    AssertEqual(
+        "4cfca04c7a41decfdb7c1c1269776ba79130688809c02a9dc7f4f7275c24d7579ebfbfd2acefa5f7",
+        CreateTestSigner(1_784_267_548_443)
+            .SignTransfer(new TransferRequest(0, 1, 0, 1, 4_294_967_299, 17, VectorMemoHex), 53)
+            .TransactionHash,
+        "treasury transfer hash");
+    AssertEqual(
+        "ed1c4afbcff920ddf8557f9d2a7efe7038b5b03234639879f145eb00073ad0d1d4c3e1de8d09cc3c",
+        CreateTestSigner(1_784_267_548_444)
+            .SignTransfer(new TransferRequest(-1, 1, 0, 1, 4_294_967_299, 17, VectorMemoHex), 54)
+            .TransactionHash,
+        "negative-one transfer hash");
+
+    var signer = CreateTestSigner(1_784_267_548_443);
+    SignedTransaction Sign(TransferRequest transfer) => signer.SignTransfer(transfer, 53);
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => Sign(new TransferRequest(2, 0, 0, 1, 100, 0, VectorMemoHex)),
+        "nil asset index");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => Sign(new TransferRequest(2, 63, 0, 1, 100, 0, VectorMemoHex)),
+        "asset index above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => Sign(new TransferRequest(2, 1, 0, 1, 1L << 60, 0, VectorMemoHex)),
+        "amount above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => Sign(new TransferRequest(2, 1, 0, 1, 100, 1L << 60, VectorMemoHex)),
+        "fee above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => Sign(new TransferRequest(281_474_976_710_655, 1, 0, 1, 100, 0, VectorMemoHex)),
+        "destination above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => Sign(new TransferRequest(-2, 1, 0, 1, 100, 0, VectorMemoHex)),
+        "destination below the minimum");
+    return Task.CompletedTask;
+}
+
+static Task TestNewValidatorRejectionsAsync()
+{
+    var signer = CreateTestSigner(1_784_267_548_433);
+
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(300, 10, 10, 100, 0), 60),
+        "modify market between perps and spot");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(7, 0, 10, 100, 0), 60),
+        "modify order index zero");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(7, 1L << 60, 10, 100, 0), 60),
+        "modify order index above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(7, 10, -1, 100, 0), 60),
+        "modify negative base amount");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(7, 10, 10, 0, 0), 60),
+        "modify price zero");
+
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignUpdateLeverage(255, 500, 0, 60),
+        "leverage nil market sentinel");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignUpdateLeverage(7, 500, 2, 60),
+        "leverage margin mode above isolated");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignUpdateLeverage(7, 0, 0, 60),
+        "leverage zero margin fraction");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignUpdateLeverage(7, 10_001, 0, 60),
+        "leverage margin fraction above the tick");
+
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignApproveIntegrator(new ApproveIntegratorRequest(-2, 0, 0, 0, 0, 1), 60),
+        "integrator index below the minimum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignApproveIntegrator(new ApproveIntegratorRequest(281_474_976_710_655, 0, 0, 0, 0, 1), 60),
+        "integrator index above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignApproveIntegrator(new ApproveIntegratorRequest(12_345, 1_000_001, 0, 0, 0, 1), 60),
+        "integrator fee above the tick");
+    AssertThrows<ArgumentException>(
+        () => signer.SignApproveIntegrator(new ApproveIntegratorRequest(12_345, 1, 0, 0, 0, 0), 60),
+        "revocation with a non-zero fee");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignApproveIntegrator(new ApproveIntegratorRequest(12_345, 0, 0, 0, 0, -1), 60),
+        "negative approval expiry");
+
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => new LighterSigner(TestPrivateKey, 281_474_976_710_655, 0, 304),
+        "account index above the maximum");
     return Task.CompletedTask;
 }
 
@@ -516,6 +612,9 @@ static Task TestTransactionExpiryAsync()
     AssertThrows<ArgumentOutOfRangeException>(
         () => signer.TransactionExpiry = TimeSpan.FromSeconds(-1),
         "negative transaction expiry");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.TransactionExpiry = TimeSpan.MaxValue,
+        "oversized transaction expiry");
     return Task.CompletedTask;
 }
 
@@ -707,14 +806,14 @@ static void AssertThrows<TException>(Action action, string description)
     {
         action();
     }
-    catch (TException)
+    catch (TException exception) when (exception.GetType() == typeof(TException))
     {
         return;
     }
     catch (Exception exception)
     {
         throw new InvalidOperationException(
-            $"{description}: threw {exception.GetType().Name} instead of {typeof(TException).Name}");
+            $"{description}: threw {exception.GetType().Name} instead of exactly {typeof(TException).Name}");
     }
 
     throw new InvalidOperationException($"{description}: no exception was thrown");
