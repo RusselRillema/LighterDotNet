@@ -2,15 +2,15 @@ using Lighter.Signer.Cryptography;
 
 namespace Lighter.Signer.Transactions;
 
-internal static class L2TxAttributeCodec
+internal static class L2TxAttributeEncoder
 {
     internal const byte IntegratorAccountIndexType = 1;
     internal const byte IntegratorTakerFeeType = 2;
     internal const byte IntegratorMakerFeeType = 3;
     internal const byte SkipNonceType = 4;
 
-    // Attribute type 5 (CancelAllMarketIndex, whose nil value is 255 rather than 0) is reserved
-    // for a future cancel-all transaction and is intentionally not exposed.
+    // Attribute type 5 is not exposed as it is not implemented
+
     internal const byte SelfTradeBehaviorModeType = 6;
     internal const byte SelfTradeEqualityModeType = 7;
 
@@ -122,14 +122,12 @@ internal static class L2TxAttributeCodec
 
         // Real-valued attributes fill (type, value) pairs in ascending type order; the remaining
         // slots stay (0, 0). Nil-valued entries participate in JSON but never in the hash.
-        var elements = new Goldilocks[2 * ExchangeConstants.MaxAttributesPerTransaction];
-        var slot = 0;
+        Goldilocks[] elements = new Goldilocks[2 * ExchangeConstants.MaxAttributesPerTransaction];
+        int slot = 0;
         foreach (var (attributeType, value) in attributes)
         {
             if (value == 0)
-            {
                 continue;
-            }
 
             elements[2 * slot] = new Goldilocks(attributeType);
             elements[(2 * slot) + 1] = Goldilocks.FromSigned(value);
@@ -137,11 +135,9 @@ internal static class L2TxAttributeCodec
         }
 
         if (slot == 0)
-        {
             return transactionHash;
-        }
 
-        var attributesHash = Poseidon2.HashToFp5(elements);
+        Fp5 attributesHash = Poseidon2.HashToFp5(elements);
         return Poseidon2.HashToFp5(
         [
             transactionHash[0],
@@ -157,6 +153,5 @@ internal static class L2TxAttributeCodec
         ]);
     }
 
-    private static bool HasRealValue(SortedDictionary<byte, long> map, byte attributeType) =>
-        map.GetValueOrDefault(attributeType) != 0;
+    private static bool HasRealValue(SortedDictionary<byte, long> map, byte attributeType) => map.GetValueOrDefault(attributeType) != 0;
 }

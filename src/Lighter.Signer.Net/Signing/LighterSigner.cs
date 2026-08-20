@@ -47,15 +47,11 @@ public sealed class LighterSigner
         TimeProvider? timeProvider = null)
     {
         if (accountIndex <= 0 || accountIndex > ExchangeConstants.MaxAccountIndex)
-        {
             throw new ArgumentOutOfRangeException(nameof(accountIndex), "Account index must be between 1 and 2^48 - 2.");
-        }
 
         // 255 is the nil api-key sentinel, which the exchange refuses to sign for.
         if (apiKeyIndex > ExchangeConstants.MaxApiKeyIndex)
-        {
             throw new ArgumentOutOfRangeException(nameof(apiKeyIndex), "API key index must be at most 254.");
-        }
 
         _signer = new SchnorrSigner(privateKeyHex);
         _accountIndex = accountIndex;
@@ -76,11 +72,7 @@ public sealed class LighterSigner
         set
         {
             if (value <= TimeSpan.Zero || value.TotalMilliseconds > ExchangeConstants.MaxTimestampMilliseconds)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(value),
-                    "The transaction expiry must be positive and at most 2^48 - 1 milliseconds.");
-            }
+                throw new ArgumentOutOfRangeException(nameof(value), "The transaction expiry must be positive and at most 2^48 - 1 milliseconds.");
 
             _transactionExpiry = value;
         }
@@ -101,9 +93,7 @@ public sealed class LighterSigner
             source.CopyTo(chunk);
             var value = BinaryPrimitives.ReadUInt64LittleEndian(chunk);
             if (value >= Goldilocks.Modulus)
-            {
                 throw new InvalidOperationException("The auth message cannot be represented canonically.");
-            }
 
             elements[index] = new Goldilocks(value);
         }
@@ -119,14 +109,12 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(order);
         if (order.OrderExpiry == Default28DayOrderExpiry)
-        {
             order = order with { OrderExpiry = _timeProvider.GetUtcNow().AddDays(28).ToUnixTimeMilliseconds() };
-        }
 
         ValidateCreateOrder(order, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
-        var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = ComputeTransactionHash(
+        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
+        long expiredAt = GetTransactionExpiryMilliseconds();
+        Fp5 hash = ComputeTransactionHash(
             CreateOrderTransactionType,
             nonce,
             expiredAt,
@@ -143,7 +131,7 @@ public sealed class LighterSigner
                 new Goldilocks(order.TriggerPrice),
                 Goldilocks.FromSigned(order.OrderExpiry),
             ]);
-        var payload = new CreateOrderPayload
+        CreateOrderPayload payload = new CreateOrderPayload
         {
             AccountIndex = _accountIndex,
             ApiKeyIndex = _apiKeyIndex,
@@ -168,7 +156,7 @@ public sealed class LighterSigner
     public SignedTransaction SignCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateCancelOrder(marketIndex, exchangeOrderIndex, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             CancelOrderTransactionType,
@@ -197,7 +185,7 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(modify);
         ValidateModifyOrder(modify, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             ModifyOrderTransactionType,
@@ -236,7 +224,7 @@ public sealed class LighterSigner
         L2TxAttributes? attributes = null)
     {
         ValidateUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             UpdateLeverageTransactionType,
@@ -267,7 +255,7 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(approval);
         ValidateApproveIntegrator(approval, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             ApproveIntegratorTransactionType,
@@ -310,7 +298,7 @@ public sealed class LighterSigner
         ValidateTransfer(transfer, nonce);
         var memo = DecodeTransferMemo(transfer.Memo);
 
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var amount = (ulong)transfer.Amount;
         var fee = (ulong)transfer.UsdcFee;
@@ -387,7 +375,7 @@ public sealed class LighterSigner
         elements[4] = Goldilocks.FromSigned(_accountIndex);
         elements[5] = new Goldilocks(_apiKeyIndex);
         transactionElements.CopyTo(elements.AsSpan(6));
-        return L2TxAttributeCodec.AggregateTransactionHash(Poseidon2.HashToFp5(elements), attributeMap);
+        return L2TxAttributeEncoder.AggregateTransactionHash(Poseidon2.HashToFp5(elements), attributeMap);
     }
 
     private static SignedTransaction ToSignedTransaction<TPayload>(
