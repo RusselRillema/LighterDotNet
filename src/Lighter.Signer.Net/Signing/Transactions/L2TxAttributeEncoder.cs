@@ -17,56 +17,31 @@ internal static class L2TxAttributeEncoder
     internal static SortedDictionary<byte, long>? ToValidatedMap(L2TxAttributes? attributes)
     {
         if (attributes is null)
-        {
             return null;
-        }
 
-        var map = new SortedDictionary<byte, long>();
-        if (attributes.IntegratorAccountIndex is { } integratorAccountIndex)
-        {
-            map[IntegratorAccountIndexType] = integratorAccountIndex;
-        }
-
-        if (attributes.IntegratorTakerFee is { } integratorTakerFee)
-        {
-            map[IntegratorTakerFeeType] = integratorTakerFee;
-        }
-
-        if (attributes.IntegratorMakerFee is { } integratorMakerFee)
-        {
-            map[IntegratorMakerFeeType] = integratorMakerFee;
-        }
-
-        if (attributes.SkipNonce is { } skipNonce)
-        {
-            map[SkipNonceType] = skipNonce;
-        }
-
-        if (attributes.SelfTradeBehaviorMode is { } selfTradeBehaviorMode)
-        {
-            map[SelfTradeBehaviorModeType] = selfTradeBehaviorMode;
-        }
-
-        if (attributes.SelfTradeEqualityMode is { } selfTradeEqualityMode)
-        {
-            map[SelfTradeEqualityModeType] = selfTradeEqualityMode;
-        }
+        SortedDictionary<byte, long> map = new();
+        if (attributes.IntegratorAccountIndex.HasValue)
+            map[IntegratorAccountIndexType] = attributes.IntegratorAccountIndex.Value;
+        if (attributes.IntegratorTakerFee.HasValue)
+            map[IntegratorTakerFeeType] = attributes.IntegratorTakerFee.Value;
+        if (attributes.IntegratorMakerFee.HasValue)
+            map[IntegratorMakerFeeType] = attributes.IntegratorMakerFee.Value;
+        if (attributes.SkipNonce.HasValue)
+            map[SkipNonceType] = attributes.SkipNonce.Value;
+        if (attributes.SelfTradeBehaviorMode.HasValue)
+            map[SelfTradeBehaviorModeType] = attributes.SelfTradeBehaviorMode.Value;
+        if (attributes.SelfTradeEqualityMode.HasValue)
+            map[SelfTradeEqualityModeType] = attributes.SelfTradeEqualityMode.Value;
 
         if (map.Count == 0)
-        {
             return null;
-        }
 
         if (map.Count > ExchangeConstants.MaxAttributesPerTransaction)
-        {
-            throw new ArgumentException(
-                "A transaction supports at most four L2 transaction attributes.",
-                nameof(attributes));
-        }
+            throw new ArgumentException("A transaction supports at most four L2 transaction attributes.", nameof(attributes));
 
-        foreach (var (attributeType, value) in map)
+        foreach ((byte attributeType, long value) in map)
         {
-            var (minValue, maxValue) = attributeType switch
+            (long minValue, long maxValue) = attributeType switch
             {
                 IntegratorAccountIndexType => (0L, ExchangeConstants.MaxAccountIndex),
                 IntegratorTakerFeeType or IntegratorMakerFeeType => (0L, ExchangeConstants.FeeTick),
@@ -76,37 +51,20 @@ internal static class L2TxAttributeEncoder
                 _ => throw new ArgumentException("The attribute type is unknown.", nameof(attributes)),
             };
             if (value < minValue || value > maxValue)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(attributes),
-                    $"The L2 transaction attribute {attributeType} value {value} is out of range.");
-            }
+                throw new ArgumentOutOfRangeException(nameof(attributes), $"The L2 transaction attribute {attributeType} value {value} is out of range.");
         }
 
-        // Every exposed attribute has a nil value of zero, so "set to a real value" means non-zero.
-        var hasIntegratorFees = HasRealValue(map, IntegratorTakerFeeType) || HasRealValue(map, IntegratorMakerFeeType);
+        bool hasIntegratorFees = HasRealValue(map, IntegratorTakerFeeType) || HasRealValue(map, IntegratorMakerFeeType);
         if (hasIntegratorFees && !HasRealValue(map, IntegratorAccountIndexType))
-        {
-            throw new ArgumentException(
-                "Integrator fees require an integrator account index.",
-                nameof(attributes));
-        }
+            throw new ArgumentException("Integrator fees require an integrator account index.", nameof(attributes));
 
-        var hasSelfTradeSpecification = HasRealValue(map, SelfTradeBehaviorModeType) || HasRealValue(map, SelfTradeEqualityModeType);
+        bool hasSelfTradeSpecification = HasRealValue(map, SelfTradeBehaviorModeType) || HasRealValue(map, SelfTradeEqualityModeType);
         if (hasSelfTradeSpecification && hasIntegratorFees)
-        {
-            throw new ArgumentException(
-                "Self-trade attributes cannot be combined with integrator fees.",
-                nameof(attributes));
-        }
+            throw new ArgumentException("Self-trade attributes cannot be combined with integrator fees.", nameof(attributes));
 
         if (map.GetValueOrDefault(SelfTradeBehaviorModeType) == (byte)SelfTradeBehavior.Reduce &&
             map.GetValueOrDefault(SelfTradeEqualityModeType) == (byte)SelfTradeEquality.MasterAccountIndex)
-        {
-            throw new ArgumentException(
-                "The reduce self-trade behavior cannot be combined with master-account-index equality.",
-                nameof(attributes));
-        }
+            throw new ArgumentException("The reduce self-trade behavior cannot be combined with master-account-index equality.", nameof(attributes));
 
         return map;
     }
@@ -114,15 +72,11 @@ internal static class L2TxAttributeEncoder
     internal static Fp5 AggregateTransactionHash(Fp5 transactionHash, SortedDictionary<byte, long>? attributes)
     {
         if (attributes is null)
-        {
             return transactionHash;
-        }
 
-        // Real-valued attributes fill (type, value) pairs in ascending type order; the remaining
-        // slots stay (0, 0). Nil-valued entries participate in JSON but never in the hash.
         Goldilocks[] elements = new Goldilocks[2 * ExchangeConstants.MaxAttributesPerTransaction];
         int slot = 0;
-        foreach (var (attributeType, value) in attributes)
+        foreach ((byte attributeType, long value) in attributes)
         {
             if (value == 0)
                 continue;

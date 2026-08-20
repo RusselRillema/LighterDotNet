@@ -77,29 +77,25 @@ public sealed class LighterSigner
 
     public string CreateAuthToken(DateTimeOffset deadline)
     {
-        var message = string.Create(
-            System.Globalization.CultureInfo.InvariantCulture,
-            $"{deadline.ToUnixTimeSeconds()}:{_accountIndex}:{_apiKeyIndex}");
-        var messageBytes = Encoding.ASCII.GetBytes(message);
-        var elements = new Goldilocks[(messageBytes.Length + 7) / 8];
+        string message = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{deadline.ToUnixTimeSeconds()}:{_accountIndex}:{_apiKeyIndex}");
+        byte[] messageBytes = Encoding.ASCII.GetBytes(message);
+        Goldilocks[] elements = new Goldilocks[(messageBytes.Length + 7) / 8];
         Span<byte> chunk = stackalloc byte[8];
-        for (var index = 0; index < elements.Length; index++)
+        for (int index = 0; index < elements.Length; index++)
         {
             chunk.Clear();
-            var source = messageBytes.AsSpan(index * 8, Math.Min(8, messageBytes.Length - (index * 8)));
+            Span<byte> source = messageBytes.AsSpan(index * 8, Math.Min(8, messageBytes.Length - (index * 8)));
             source.CopyTo(chunk);
-            var value = BinaryPrimitives.ReadUInt64LittleEndian(chunk);
+            ulong value = BinaryPrimitives.ReadUInt64LittleEndian(chunk);
             if (value >= Goldilocks.Modulus)
                 throw new InvalidOperationException("The auth message cannot be represented canonically.");
 
             elements[index] = new Goldilocks(value);
         }
 
-        var messageHash = Poseidon2.HashToFp5(elements);
-        var signature = _signer.Sign(messageHash).ToBytes();
-        return string.Create(
-            System.Globalization.CultureInfo.InvariantCulture,
-            $"{message}:{Convert.ToHexString(signature).ToLowerInvariant()}");
+        Fp5 messageHash = Poseidon2.HashToFp5(elements);
+        byte[] signature = _signer.Sign(messageHash).ToBytes();
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{message}:{Convert.ToHexString(signature).ToLowerInvariant()}");
     }
 
     public SignedTransaction SignCreateOrder(OrderRequest order, long nonce, L2TxAttributes? attributes = null)
@@ -153,9 +149,9 @@ public sealed class LighterSigner
     public SignedTransaction SignCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateCancelOrder(marketIndex, exchangeOrderIndex, nonce);
-        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
-        var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = ComputeTransactionHash(
+        SortedDictionary<byte,long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
+        long expiredAt = GetTransactionExpiryMilliseconds();
+        Fp5 hash = ComputeTransactionHash(
             CancelOrderTransactionType,
             nonce,
             expiredAt,
@@ -164,7 +160,7 @@ public sealed class LighterSigner
                 Goldilocks.FromSigned(marketIndex),
                 Goldilocks.FromSigned(exchangeOrderIndex),
             ]);
-        var payload = new CancelOrderPayload
+        CancelOrderPayload payload = new CancelOrderPayload
         {
             AccountIndex = _accountIndex,
             ApiKeyIndex = _apiKeyIndex,
@@ -182,9 +178,9 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(modify);
         ValidateModifyOrder(modify, nonce);
-        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
-        var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = ComputeTransactionHash(
+        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
+        long expiredAt = GetTransactionExpiryMilliseconds();
+        Fp5 hash = ComputeTransactionHash(
             ModifyOrderTransactionType,
             nonce,
             expiredAt,
@@ -196,7 +192,7 @@ public sealed class LighterSigner
                 new Goldilocks(modify.Price),
                 new Goldilocks(modify.TriggerPrice),
             ]);
-        var payload = new ModifyOrderPayload
+        ModifyOrderPayload payload = new ModifyOrderPayload
         {
             AccountIndex = _accountIndex,
             ApiKeyIndex = _apiKeyIndex,
