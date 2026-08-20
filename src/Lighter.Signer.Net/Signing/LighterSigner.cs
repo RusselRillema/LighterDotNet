@@ -119,7 +119,7 @@ public sealed class LighterSigner
         }
 
         ValidateCreateOrder(order, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             CreateOrderTransactionType,
@@ -163,7 +163,7 @@ public sealed class LighterSigner
     public SignedTransaction SignCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateCancelOrder(marketIndex, exchangeOrderIndex, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             CancelOrderTransactionType,
@@ -192,7 +192,7 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(modify);
         ValidateModifyOrder(modify, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             ModifyOrderTransactionType,
@@ -231,7 +231,7 @@ public sealed class LighterSigner
         L2TxAttributes? attributes = null)
     {
         ValidateUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             UpdateLeverageTransactionType,
@@ -262,7 +262,7 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(approval);
         ValidateApproveIntegrator(approval, nonce);
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var hash = ComputeTransactionHash(
             ApproveIntegratorTransactionType,
@@ -305,7 +305,7 @@ public sealed class LighterSigner
         ValidateTransfer(transfer, nonce);
         var memo = DecodeTransferMemo(transfer.Memo);
 
-        var attributeMap = L2TxAttributeCodec.ToValidatedMap(attributes);
+        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         var expiredAt = GetTransactionExpiryMilliseconds();
         var amount = (ulong)transfer.Amount;
         var fee = (ulong)transfer.UsdcFee;
@@ -373,7 +373,7 @@ public sealed class LighterSigner
         elements[4] = Goldilocks.FromSigned(_accountIndex);
         elements[5] = new Goldilocks(_apiKeyIndex);
         transactionElements.CopyTo(elements.AsSpan(6));
-        return L2TxAttributeCodec.AggregateTransactionHash(Poseidon2.HashToFp5(elements), attributeMap);
+        return L2TxAttributeEncoder.AggregateTransactionHash(Poseidon2.HashToFp5(elements), attributeMap);
     }
 
     private static SignedTransaction ToSignedTransaction<TPayload>(

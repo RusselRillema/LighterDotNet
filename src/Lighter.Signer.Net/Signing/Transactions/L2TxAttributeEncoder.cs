@@ -2,15 +2,15 @@ using Lighter.Signer.Cryptography;
 
 namespace Lighter.Signer.Transactions;
 
-internal static class L2TxAttributeCodec
+internal static class L2TxAttributeEncoder
 {
     internal const byte IntegratorAccountIndexType = 1;
     internal const byte IntegratorTakerFeeType = 2;
     internal const byte IntegratorMakerFeeType = 3;
     internal const byte SkipNonceType = 4;
 
-    // Attribute type 5 (CancelAllMarketIndex, whose nil value is 255 rather than 0) is reserved
-    // for a future cancel-all transaction and is intentionally not exposed.
+    // Attribute type 5 is not exposed as it is not implemented
+
     internal const byte SelfTradeBehaviorModeType = 6;
     internal const byte SelfTradeEqualityModeType = 7;
 
