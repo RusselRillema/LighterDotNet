@@ -39,31 +39,22 @@ public sealed class TradingWorkflow
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        var account = await _apiClient.GetAccountAsync(_credentials.AccountIndex, cancellationToken);
+        Account account = await _apiClient.GetAccountAsync(_credentials.AccountIndex, cancellationToken);
         await _output.WriteLineAsync($"1. Balances count: {account.Assets.Count}");
         await _output.WriteLineAsync($"   Positions count: {account.Positions.Count}");
 
-        var market = await _apiClient.GetMarketAsync("XRP", cancellationToken);
-        if (decimal.TryParse(market.MinimumBaseAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out var minimum) &&
-            RequestedXrpQuantity < minimum)
-        {
-            await _output.WriteLineAsync(
-                $"   Warning: exchange metadata currently advertises a minimum XRP size of {minimum.ToString(CultureInfo.InvariantCulture)}.");
-        }
+        MarketDetails market = await _apiClient.GetMarketAsync("XRP", cancellationToken);
+        if (decimal.TryParse(market.MinimumBaseAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal minimum) && RequestedXrpQuantity < minimum)
+            await _output.WriteLineAsync($"   Warning: exchange metadata currently advertises a minimum XRP size of {minimum.ToString(CultureInfo.InvariantCulture)}.");
 
-        var baseAmount = ScaleToInt64(RequestedXrpQuantity, market.SupportedSizeDecimals, "XRP quantity");
-        var scaledPrice = ScaleToInt64(RequestedPrice, market.SupportedPriceDecimals, "order price");
+        long baseAmount = ScaleToInt64(RequestedXrpQuantity, market.SupportedSizeDecimals, "XRP quantity");
+        long scaledPrice = ScaleToInt64(RequestedPrice, market.SupportedPriceDecimals, "order price");
         if (scaledPrice > uint.MaxValue)
-        {
             throw new InvalidOperationException("The scaled order price is too large.");
-        }
 
-        var clientOrderIndex = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
-        var nonce = await _apiClient.GetNextNonceAsync(
-            _credentials.AccountIndex,
-            _credentials.KeyIndex,
-            cancellationToken);
-        var createOrder = _signer.SignCreateOrder(
+        long clientOrderIndex = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        long nonce = await _apiClient.GetNextNonceAsync(_credentials.AccountIndex, _credentials.KeyIndex, cancellationToken);
+        SignedTransaction createOrder = _signer.SignCreateOrder(
             new OrderRequest(
                 market.MarketId,
                 clientOrderIndex,
@@ -77,48 +68,33 @@ public sealed class TradingWorkflow
                 OrderExpiry: _timeProvider.GetUtcNow().AddDays(28).ToUnixTimeMilliseconds()),
             nonce);
         await WriteOutgoingTransactionAsync("Create order request", createOrder);
-        var createResponse = await _apiClient.SendTransactionAsync(createOrder, cancellationToken);
+        SendTransactionResponse createResponse = await _apiClient.SendTransactionAsync(createOrder, cancellationToken);
         await WriteExchangeResponseAsync("Create order response", createResponse);
 
-        var authToken = _signer.CreateAuthToken(_timeProvider.GetUtcNow().AddMinutes(10));
-        var (ordersAfterCreate, placedOrder) = await WaitForPlacedOrderAsync(
-            clientOrderIndex,
-            authToken,
-            cancellationToken);
+        string authToken = _signer.CreateAuthToken(_timeProvider.GetUtcNow().AddMinutes(10));
+        (OrdersResponse ordersAfterCreate, OpenOrder placedOrder) = await WaitForPlacedOrderAsync(clientOrderIndex, authToken, cancellationToken);
         await _output.WriteLineAsync($"2. Placed order ID: {placedOrder.OrderId}");
         await _output.WriteLineAsync($"   Exchange order index: {placedOrder.OrderIndex}");
         await _output.WriteLineAsync($"3. Open orders count: {ordersAfterCreate.Orders.Count}");
 
-        var containsPlacedOrder = ordersAfterCreate.Orders.Any(order =>
-            string.Equals(order.OrderId, placedOrder.OrderId, StringComparison.Ordinal));
+        bool containsPlacedOrder = ordersAfterCreate.Orders.Any(order => string.Equals(order.OrderId, placedOrder.OrderId, StringComparison.Ordinal));
         if (!containsPlacedOrder)
-        {
             throw new InvalidOperationException("The placed order ID was not present in open orders.");
-        }
 
         await _output.WriteLineAsync("4. Placed order ID is present in open orders: yes");
 
-        var cancelOrder = _signer.SignCancelOrder(
-            placedOrder.MarketIndex,
-            placedOrder.OrderIndex,
-            checked(nonce + 1));
+        SignedTransaction cancelOrder = _signer.SignCancelOrder(placedOrder.MarketIndex, placedOrder.OrderIndex, checked(nonce + 1));
         await WriteOutgoingTransactionAsync("Cancel order request", cancelOrder);
-        var cancelResponse = await _apiClient.SendTransactionAsync(cancelOrder, cancellationToken);
+        SendTransactionResponse cancelResponse = await _apiClient.SendTransactionAsync(cancelOrder, cancellationToken);
         await WriteExchangeResponseAsync("Cancel order response", cancelResponse);
         await _output.WriteLineAsync($"5. Cancel submitted for exchange order ID: {placedOrder.OrderId}");
 
-        var ordersAfterCancel = await WaitForOrderRemovalAsync(
-            placedOrder.OrderId,
-            authToken,
-            cancellationToken);
+        OrdersResponse ordersAfterCancel = await WaitForOrderRemovalAsync(placedOrder.OrderId, authToken, cancellationToken);
         await _output.WriteLineAsync($"6. Open orders count: {ordersAfterCancel.Orders.Count}");
 
-        var stillPresent = ordersAfterCancel.Orders.Any(order =>
-            string.Equals(order.OrderId, placedOrder.OrderId, StringComparison.Ordinal));
+        bool stillPresent = ordersAfterCancel.Orders.Any(order => string.Equals(order.OrderId, placedOrder.OrderId, StringComparison.Ordinal));
         if (stillPresent)
-        {
             throw new InvalidOperationException("The canceled order ID remained in open orders.");
-        }
 
         await _output.WriteLineAsync("7. Placed order ID is absent from open orders: yes");
     }
@@ -128,19 +104,14 @@ public sealed class TradingWorkflow
         string authToken,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < MaximumPollAttempts; attempt++)
+        for (int attempt = 0; attempt < MaximumPollAttempts; attempt++)
         {
-            var response = await _apiClient.GetOpenOrdersAsync(
-                _credentials.AccountIndex,
-                authToken,
-                cancellationToken);
-            var order = response.Orders.SingleOrDefault(candidate => candidate.ClientOrderIndex == clientOrderIndex);
+            OrdersResponse response = await _apiClient.GetOpenOrdersAsync(_credentials.AccountIndex, authToken, cancellationToken);
+            OpenOrder? order = response.Orders.SingleOrDefault(candidate => candidate.ClientOrderIndex == clientOrderIndex);
             if (order is not null)
             {
                 if (order.OrderIndex <= 0 || string.IsNullOrWhiteSpace(order.OrderId))
-                {
                     throw new InvalidOperationException("The exchange returned an incomplete order identity.");
-                }
 
                 return (response, order);
             }
@@ -156,16 +127,11 @@ public sealed class TradingWorkflow
         string authToken,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < MaximumPollAttempts; attempt++)
+        for (int attempt = 0; attempt < MaximumPollAttempts; attempt++)
         {
-            var response = await _apiClient.GetOpenOrdersAsync(
-                _credentials.AccountIndex,
-                authToken,
-                cancellationToken);
+            OrdersResponse response = await _apiClient.GetOpenOrdersAsync(_credentials.AccountIndex, authToken, cancellationToken);
             if (response.Orders.All(order => !string.Equals(order.OrderId, orderId, StringComparison.Ordinal)))
-            {
                 return response;
-            }
 
             await DelayBeforeRetryAsync(attempt, cancellationToken);
         }
@@ -180,35 +146,29 @@ public sealed class TradingWorkflow
 
     private async Task WriteOutgoingTransactionAsync(string label, SignedTransaction transaction)
     {
-        var safeTransactionInfo = RedactTransactionInfo(transaction.TransactionInfo);
-        await _output.WriteLineAsync(
-            $"   {label} (credential fields redacted): tx_type={transaction.TransactionType}, tx_info={safeTransactionInfo}");
+        string safeTransactionInfo = RedactTransactionInfo(transaction.TransactionInfo);
+        await _output.WriteLineAsync($"   {label} (credential fields redacted): tx_type={transaction.TransactionType}, tx_info={safeTransactionInfo}");
     }
 
     private async Task WriteExchangeResponseAsync(string label, SendTransactionResponse response)
     {
-        await _output.WriteLineAsync(
-            $"   {label}: code={response.Code}, message={response.Message ?? "success"}, tx_hash={response.TransactionHash}");
+        await _output.WriteLineAsync($"   {label}: code={response.Code}, message={response.Message ?? "success"}, tx_hash={response.TransactionHash}");
     }
 
     private static long ScaleToInt64(decimal value, int decimalPlaces, string fieldName)
     {
         if (decimalPlaces is < 0 or > 18)
-        {
             throw new InvalidOperationException($"The {fieldName} decimal precision is unsupported.");
-        }
 
-        var scale = 1m;
-        for (var index = 0; index < decimalPlaces; index++)
+        decimal scale = 1m;
+        for (int index = 0; index < decimalPlaces; index++)
         {
             scale *= 10m;
         }
 
-        var scaled = value * scale;
+        decimal scaled = value * scale;
         if (scaled != decimal.Truncate(scaled) || scaled > long.MaxValue)
-        {
             throw new InvalidOperationException($"The {fieldName} cannot be represented exactly.");
-        }
 
         return (long)scaled;
     }
@@ -217,18 +177,14 @@ public sealed class TradingWorkflow
     {
         try
         {
-            var payload = JsonNode.Parse(transactionInfo) as JsonObject;
+            JsonObject? payload = JsonNode.Parse(transactionInfo) as JsonObject;
             if (payload is null)
-            {
                 return "[UNAVAILABLE]";
-            }
 
-            foreach (var property in new[] { "AccountIndex", "FromAccountIndex", "ApiKeyIndex", "Sig", "L1Sig" })
+            foreach (string property in new[] { "AccountIndex", "FromAccountIndex", "ApiKeyIndex", "Sig", "L1Sig" })
             {
                 if (payload.ContainsKey(property))
-                {
                     payload[property] = "[REDACTED]";
-                }
             }
 
             return payload.ToJsonString(new JsonSerializerOptions { WriteIndented = false });

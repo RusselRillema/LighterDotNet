@@ -14,9 +14,7 @@ internal readonly record struct Scalar
     {
         Value = value % Order;
         if (Value.Sign < 0)
-        {
             Value += Order;
-        }
     }
 
     public BigInteger Value { get; }
@@ -26,9 +24,7 @@ internal readonly record struct Scalar
     public static Scalar FromLittleEndian(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length != 40)
-        {
             throw new ArgumentException("An ECgFp5 scalar must contain exactly 40 bytes.", nameof(bytes));
-        }
 
         return new Scalar(new BigInteger(bytes, isUnsigned: true, isBigEndian: false));
     }
@@ -44,11 +40,9 @@ internal readonly record struct Scalar
             {
                 RandomNumberGenerator.Fill(bytes);
                 bytes[^1] &= 0x7F;
-                var candidate = new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
+                BigInteger candidate = new(bytes, isUnsigned: true, isBigEndian: false);
                 if (candidate > BigInteger.Zero && candidate < Order)
-                {
                     return new Scalar(candidate);
-                }
             }
         }
         finally
@@ -59,11 +53,9 @@ internal readonly record struct Scalar
 
     public byte[] ToLittleEndianBytes()
     {
-        var result = new byte[40];
+        byte[] result = new byte[40];
         if (!Value.TryWriteBytes(result, out _, isUnsigned: true, isBigEndian: false))
-        {
             throw new InvalidOperationException("Failed to encode ECgFp5 scalar.");
-        }
 
         return result;
     }

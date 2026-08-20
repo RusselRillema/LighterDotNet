@@ -152,7 +152,7 @@ public sealed class LighterSigner
     public SignedTransaction SignCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateCancelOrder(marketIndex, exchangeOrderIndex, nonce);
-        SortedDictionary<byte,long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
+        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         long expiredAt = GetTransactionExpiryMilliseconds();
         Fp5 hash = ComputeTransactionHash(
             CancelOrderTransactionType,
@@ -220,9 +220,9 @@ public sealed class LighterSigner
         L2TxAttributes? attributes = null)
     {
         ValidateUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce);
-        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
-        var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = ComputeTransactionHash(
+        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
+        long expiredAt = GetTransactionExpiryMilliseconds();
+        Fp5 hash = ComputeTransactionHash(
             UpdateLeverageTransactionType,
             nonce,
             expiredAt,
@@ -232,7 +232,7 @@ public sealed class LighterSigner
                 new Goldilocks(initialMarginFraction),
                 new Goldilocks(marginMode),
             ]);
-        var payload = new UpdateLeveragePayload
+        UpdateLeveragePayload payload = new UpdateLeveragePayload
         {
             AccountIndex = _accountIndex,
             ApiKeyIndex = _apiKeyIndex,
@@ -251,9 +251,9 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(approval);
         ValidateApproveIntegrator(approval, nonce);
-        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
-        var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = ComputeTransactionHash(
+        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
+        long expiredAt = GetTransactionExpiryMilliseconds();
+        Fp5 hash = ComputeTransactionHash(
             ApproveIntegratorTransactionType,
             nonce,
             expiredAt,
@@ -266,7 +266,7 @@ public sealed class LighterSigner
                 new Goldilocks(approval.MaxSpotMakerFee),
                 Goldilocks.FromSigned(approval.ApprovalExpiry),
             ]);
-        var payload = new ApproveIntegratorPayload
+        ApproveIntegratorPayload payload = new ApproveIntegratorPayload
         {
             AccountIndex = _accountIndex,
             ApiKeyIndex = _apiKeyIndex,
@@ -281,24 +281,20 @@ public sealed class LighterSigner
             Sig = _signer.Sign(hash).ToBytes(),
             Attributes = attributeMap,
         };
-        return ToSignedTransaction(
-            ApproveIntegratorTransactionType,
-            payload,
-            hash,
-            BuildApproveIntegratorL1SignatureBody(approval, nonce));
+        return ToSignedTransaction(ApproveIntegratorTransactionType, payload, hash, BuildApproveIntegratorL1SignatureBody(approval, nonce));
     }
 
     public SignedTransaction SignTransfer(TransferRequest transfer, long nonce, L2TxAttributes? attributes = null)
     {
         ArgumentNullException.ThrowIfNull(transfer);
         ValidateTransfer(transfer, nonce);
-        var memo = DecodeTransferMemo(transfer.Memo);
+        byte[] memo = DecodeTransferMemo(transfer.Memo);
 
-        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
-        var expiredAt = GetTransactionExpiryMilliseconds();
-        var amount = (ulong)transfer.Amount;
-        var fee = (ulong)transfer.UsdcFee;
-        var hash = ComputeTransactionHash(
+        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
+        long expiredAt = GetTransactionExpiryMilliseconds();
+        ulong amount = (ulong)transfer.Amount;
+        ulong fee = (ulong)transfer.UsdcFee;
+        Fp5 hash = ComputeTransactionHash(
             TransferTransactionType,
             nonce,
             expiredAt,
@@ -313,7 +309,7 @@ public sealed class LighterSigner
                 new Goldilocks(fee & uint.MaxValue),
                 new Goldilocks(fee >> 32),
             ]);
-        var payload = new TransferPayload
+        TransferPayload payload = new TransferPayload
         {
             FromAccountIndex = _accountIndex,
             ApiKeyIndex = _apiKeyIndex,
@@ -334,20 +330,15 @@ public sealed class LighterSigner
 
     private long GetTransactionExpiryMilliseconds()
     {
-        var now = _timeProvider.GetUtcNow();
+        DateTimeOffset now = _timeProvider.GetUtcNow();
         if (_transactionExpiry > DateTimeOffset.MaxValue - now)
-        {
             throw new InvalidOperationException("The transaction expiry extends beyond the representable time range.");
-        }
 
-        var expiredAt = now.Add(_transactionExpiry).ToUnixTimeMilliseconds();
+        long expiredAt = now.Add(_transactionExpiry).ToUnixTimeMilliseconds();
 
-        // DateTimeOffset.MaxValue (year 9999) is below the 2^48 - 1 ms protocol cap, so only a
-        // pre-epoch clock can produce an out-of-range timestamp here.
+        // Only a pre-epoch clock can produce a negative timestamp here.
         if (expiredAt < 0)
-        {
             throw new InvalidOperationException("The computed transaction expiry timestamp is out of range.");
-        }
 
         return expiredAt;
     }
@@ -363,7 +354,7 @@ public sealed class LighterSigner
         SortedDictionary<byte, long>? attributeMap,
         ReadOnlySpan<Goldilocks> transactionElements)
     {
-        var elements = new Goldilocks[6 + transactionElements.Length];
+        Goldilocks[] elements = new Goldilocks[6 + transactionElements.Length];
         elements[0] = new Goldilocks(_chainId);
         elements[1] = new Goldilocks(transactionType);
         elements[2] = Goldilocks.FromSigned(nonce);
@@ -374,11 +365,7 @@ public sealed class LighterSigner
         return L2TxAttributeEncoder.AggregateTransactionHash(Poseidon2.HashToFp5(elements), attributeMap);
     }
 
-    private static SignedTransaction ToSignedTransaction<TPayload>(
-        byte transactionType,
-        TPayload payload,
-        Fp5 hash,
-        string? l1SignatureBody = null) =>
+    private static SignedTransaction ToSignedTransaction<TPayload>(byte transactionType, TPayload payload, Fp5 hash, string? l1SignatureBody = null) =>
         new(
             transactionType,
             JsonSerializer.Serialize(payload, JsonOptions),
@@ -391,15 +378,11 @@ public sealed class LighterSigner
     /// </summary>
     private static byte[] DecodeTransferMemo(string memo)
     {
-        var value = memo;
+        string value = memo;
         if (value.Length == 66)
         {
             if (!value.StartsWith("0x", StringComparison.Ordinal))
-            {
-                throw new ArgumentException(
-                    "A 66-character memo must be 0x-prefixed hex.",
-                    nameof(memo));
-            }
+                throw new ArgumentException("A 66-character memo must be 0x-prefixed hex.", nameof(memo));
 
             value = value[2..];
         }
@@ -416,13 +399,9 @@ public sealed class LighterSigner
             }
         }
 
-        var bytes = Encoding.UTF8.GetBytes(value);
+        byte[] bytes = Encoding.UTF8.GetBytes(value);
         if (bytes.Length != 32)
-        {
-            throw new ArgumentException(
-                "The memo must be exactly 32 bytes, or 32 bytes hex-encoded (64 characters, optionally 0x-prefixed).",
-                nameof(memo));
-        }
+            throw new ArgumentException("The memo must be exactly 32 bytes, or 32 bytes hex-encoded (64 characters, optionally 0x-prefixed).", nameof(memo));
 
         return bytes;
     }
@@ -443,9 +422,7 @@ public sealed class LighterSigner
         $"chainId: {ToHex16(_chainId)}\n" +
         "Only sign this message for a trusted client!";
 
-    private static string ToHex16(ulong value) => string.Create(
-        System.Globalization.CultureInfo.InvariantCulture,
-        $"0x{value:x16}");
+    private static string ToHex16(ulong value) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{value:x16}");
 
     private static bool IsPerpetualMarket(short marketIndex) =>
         marketIndex is >= ExchangeConstants.MinPerpetualMarketIndex and <= ExchangeConstants.MaxPerpetualMarketIndex;
@@ -456,166 +433,99 @@ public sealed class LighterSigner
     private static void ValidateMarketIndex(short marketIndex, string paramName)
     {
         if (!IsPerpetualMarket(marketIndex) && !IsSpotMarket(marketIndex))
-        {
             throw new ArgumentOutOfRangeException(paramName, "Market index must be 0-254 (perpetual) or 2048-4094 (spot).");
-        }
     }
 
     private static void ValidateExchangeOrderIndex(long exchangeOrderIndex, string paramName)
     {
         // Accepts client order indices too, so the lower bound is MinClientOrderIndex.
         if (exchangeOrderIndex is < ExchangeConstants.MinClientOrderIndex or > ExchangeConstants.MaxOrderIndex)
-        {
             throw new ArgumentOutOfRangeException(paramName, "Order index must be between 1 and 2^60 - 1.");
-        }
     }
 
     private static void ValidateNonce(long nonce)
     {
         if (nonce < 0)
-        {
             throw new ArgumentOutOfRangeException(nameof(nonce), "The nonce must be non-negative.");
-        }
     }
 
     private static void ValidateCreateOrder(OrderRequest order, long nonce)
     {
         ValidateMarketIndex(order.MarketIndex, nameof(order));
-        var isPerpetualMarket = IsPerpetualMarket(order.MarketIndex);
-        var isSpotMarket = IsSpotMarket(order.MarketIndex);
+        bool isPerpetualMarket = IsPerpetualMarket(order.MarketIndex);
+        bool isSpotMarket = IsSpotMarket(order.MarketIndex);
 
         // Zero is the nil client order index and lets the exchange assign one.
         if (order.ClientOrderIndex is < ExchangeConstants.NilClientOrderIndex or > ExchangeConstants.MaxClientOrderIndex)
-        {
             throw new ArgumentOutOfRangeException(nameof(order), "Client order index must be 0 (exchange-assigned) or at most 2^48 - 1.");
-        }
 
         if (!order.ReduceOnly && order.BaseAmount == 0)
-        {
             throw new ArgumentOutOfRangeException(nameof(order), "Base amount is required for orders that are not reduce-only.");
-        }
 
         if (order.BaseAmount is < 0 or > ExchangeConstants.MaxOrderBaseAmount)
-        {
             throw new ArgumentOutOfRangeException(nameof(order), "Base amount must be non-negative and at most 2^48 - 1.");
-        }
 
         // The upper price and trigger-price bounds (2^32 - 1) are implicit in the uint fields.
         if (order.Price < ExchangeConstants.MinOrderPrice)
-        {
             throw new ArgumentOutOfRangeException(nameof(order), "Price must be at least 1.");
-        }
 
         if (order.TimeInForce > (byte)OrderTimeInForce.PostOnly)
-        {
             throw new ArgumentOutOfRangeException(nameof(order), "Time in force must be 0 (IOC), 1 (GTT), or 2 (post-only).");
-        }
 
         if (order.ReduceOnly && isSpotMarket)
-        {
             throw new ArgumentException("Reduce-only orders are not supported on spot markets.", nameof(order));
-        }
 
         // Zero is the nil order expiry; a -1 request was already replaced with the 28-day default.
         if (order.OrderExpiry < 0)
-        {
             throw new ArgumentOutOfRangeException(nameof(order), "Order expiry must be 0 (none) or a positive timestamp.");
-        }
 
         switch (order.Type)
         {
             case (byte)OrderType.Limit:
                 if (order.TriggerPrice != 0)
-                {
                     throw new ArgumentException("Limit orders cannot specify a trigger price.", nameof(order));
-                }
-
-                if (order.TimeInForce == (byte)OrderTimeInForce.ImmediateOrCancel
-                    ? order.OrderExpiry != 0
-                    : order.OrderExpiry == 0)
-                {
+                if (order.TimeInForce == (byte)OrderTimeInForce.ImmediateOrCancel ? order.OrderExpiry != 0 : order.OrderExpiry == 0)
                     throw new ArgumentException("The limit order expiry is inconsistent with its time in force.", nameof(order));
-                }
-
                 break;
 
             case (byte)OrderType.Market:
                 if (order.TimeInForce != (byte)OrderTimeInForce.ImmediateOrCancel)
-                {
                     throw new ArgumentException("Market orders must be immediate-or-cancel.", nameof(order));
-                }
-
                 if (order.OrderExpiry != 0)
-                {
                     throw new ArgumentException("Market orders cannot specify an order expiry.", nameof(order));
-                }
-
                 if (order.TriggerPrice != 0)
-                {
                     throw new ArgumentException("Market orders cannot specify a trigger price.", nameof(order));
-                }
-
                 break;
 
             case (byte)OrderType.StopLoss:
             case (byte)OrderType.TakeProfit:
                 if (!isPerpetualMarket)
-                {
                     throw new ArgumentException("Trigger orders are only supported on perpetual markets.", nameof(order));
-                }
-
                 if (order.TimeInForce != (byte)OrderTimeInForce.ImmediateOrCancel)
-                {
                     throw new ArgumentException("Stop-loss and take-profit orders must be immediate-or-cancel.", nameof(order));
-                }
-
                 if (order.TriggerPrice == 0)
-                {
                     throw new ArgumentException("Trigger orders require a trigger price.", nameof(order));
-                }
-
                 if (order.OrderExpiry == 0)
-                {
                     throw new ArgumentException("Trigger orders require an order expiry.", nameof(order));
-                }
-
                 break;
 
             case (byte)OrderType.StopLossLimit:
             case (byte)OrderType.TakeProfitLimit:
                 if (!isPerpetualMarket)
-                {
                     throw new ArgumentException("Trigger orders are only supported on perpetual markets.", nameof(order));
-                }
-
                 if (order.TriggerPrice == 0)
-                {
                     throw new ArgumentException("Trigger orders require a trigger price.", nameof(order));
-                }
-
                 if (order.OrderExpiry == 0)
-                {
                     throw new ArgumentException("Trigger orders require an order expiry.", nameof(order));
-                }
-
                 break;
 
             case (byte)OrderType.Twap:
                 if (order.TimeInForce != (byte)OrderTimeInForce.GoodTillTime)
-                {
                     throw new ArgumentException("TWAP orders must be good-till-time.", nameof(order));
-                }
-
                 if (order.TriggerPrice != 0)
-                {
                     throw new ArgumentException("TWAP orders cannot specify a trigger price.", nameof(order));
-                }
-
                 if (order.OrderExpiry == 0)
-                {
                     throw new ArgumentException("TWAP orders require an order expiry.", nameof(order));
-                }
-
                 break;
 
             default:
@@ -639,39 +549,26 @@ public sealed class LighterSigner
 
         // Zero keeps the current base amount.
         if (modify.BaseAmount is < 0 or > ExchangeConstants.MaxOrderBaseAmount)
-        {
             throw new ArgumentOutOfRangeException(nameof(modify), "Base amount must be non-negative and at most 2^48 - 1.");
-        }
 
         // The upper price and trigger-price bounds (2^32 - 1) are implicit in the uint fields.
         if (modify.Price < ExchangeConstants.MinOrderPrice)
-        {
             throw new ArgumentOutOfRangeException(nameof(modify), "Price must be at least 1.");
-        }
 
         ValidateNonce(nonce);
     }
 
     private static void ValidateUpdateLeverage(short marketIndex, ushort initialMarginFraction, byte marginMode, long nonce)
     {
-        // Matching Go, update-leverage only rejects the nil market sentinel (255); any other
-        // index, including negative ones, is signable (pinned by a known-answer vector).
+        // Matching Go, only the nil market sentinel is rejected; negative indices are signable.
         if (marketIndex == ExchangeConstants.NilMarketIndex)
-        {
             throw new ArgumentOutOfRangeException(nameof(marketIndex), "Market index 255 is the nil sentinel and cannot be used.");
-        }
 
         if (marginMode > (byte)MarginMode.Isolated)
-        {
             throw new ArgumentOutOfRangeException(nameof(marginMode), "Margin mode must be cross (0) or isolated (1).");
-        }
 
         if (initialMarginFraction is 0 or > ExchangeConstants.MarginFractionTick)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(initialMarginFraction),
-                "The initial margin fraction must be between 1 and 10000.");
-        }
+            throw new ArgumentOutOfRangeException(nameof(initialMarginFraction), "The initial margin fraction must be between 1 and 10000.");
 
         ValidateNonce(nonce);
     }
@@ -679,30 +576,22 @@ public sealed class LighterSigner
     private static void ValidateApproveIntegrator(ApproveIntegratorRequest approval, long nonce)
     {
         if (approval.IntegratorAccountIndex is < ExchangeConstants.MinAccountIndex or > ExchangeConstants.MaxAccountIndex)
-        {
             throw new ArgumentOutOfRangeException(nameof(approval), "Integrator account index must be between -1 and 2^48 - 2.");
-        }
 
         if (approval.MaxPerpsTakerFee > ExchangeConstants.FeeTick ||
             approval.MaxPerpsMakerFee > ExchangeConstants.FeeTick ||
             approval.MaxSpotTakerFee > ExchangeConstants.FeeTick ||
             approval.MaxSpotMakerFee > ExchangeConstants.FeeTick)
-        {
             throw new ArgumentOutOfRangeException(nameof(approval), "Integrator fees cannot exceed the fee tick (1,000,000).");
-        }
 
         // A zero approval expiry revokes the approval, which only makes sense with zero fees.
         if (approval.ApprovalExpiry == 0 &&
             (approval.MaxPerpsTakerFee != 0 || approval.MaxPerpsMakerFee != 0 ||
              approval.MaxSpotTakerFee != 0 || approval.MaxSpotMakerFee != 0))
-        {
             throw new ArgumentException("A revocation (zero approval expiry) requires all fees to be zero.", nameof(approval));
-        }
 
         if (approval.ApprovalExpiry is < 0 or > ExchangeConstants.MaxTimestampMilliseconds)
-        {
             throw new ArgumentOutOfRangeException(nameof(approval), "Approval expiry must be between 0 and 2^48 - 1.");
-        }
 
         ValidateNonce(nonce);
     }
@@ -711,34 +600,22 @@ public sealed class LighterSigner
     {
         // Matching Go, -1 and 0 (the treasury account) are valid transfer destinations.
         if (transfer.ToAccountIndex is < ExchangeConstants.MinAccountIndex or > ExchangeConstants.MaxAccountIndex)
-        {
             throw new ArgumentOutOfRangeException(nameof(transfer), "Destination account index must be between -1 and 2^48 - 2.");
-        }
 
         if (transfer.AssetIndex is < ExchangeConstants.MinAssetIndex or > ExchangeConstants.MaxAssetIndex)
-        {
             throw new ArgumentOutOfRangeException(nameof(transfer), "Asset index must be between 1 and 62.");
-        }
 
         if (transfer.FromRouteType > 1 || transfer.ToRouteType > 1)
-        {
             throw new ArgumentOutOfRangeException(nameof(transfer), "Route types must be 0 (perps) or 1 (spot).");
-        }
 
         if (transfer.Amount is <= 0 or > ExchangeConstants.MaxTransferAmount)
-        {
             throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer amount must be between 1 and 2^60 - 1.");
-        }
 
         if (transfer.UsdcFee is < 0 or > ExchangeConstants.MaxTransferAmount)
-        {
             throw new ArgumentOutOfRangeException(nameof(transfer), "The transfer fee must be between 0 and 2^60 - 1.");
-        }
 
         if (transfer.Memo is null)
-        {
             throw new ArgumentException("The transfer memo is required.", nameof(transfer));
-        }
 
         ValidateNonce(nonce);
     }

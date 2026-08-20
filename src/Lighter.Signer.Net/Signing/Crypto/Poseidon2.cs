@@ -41,21 +41,19 @@ internal static class Poseidon2
 
     public static Fp5 HashToFp5(IReadOnlyList<Goldilocks> input)
     {
-        var output = HashNToMNoPad(input, 5);
+        Goldilocks[] output = HashNToMNoPad(input, 5);
         return new Fp5(output[0], output[1], output[2], output[3], output[4]);
     }
 
     public static Goldilocks[] HashNToMNoPad(IReadOnlyList<Goldilocks> input, int outputCount)
     {
         if (outputCount <= 0)
-        {
             throw new ArgumentOutOfRangeException(nameof(outputCount));
-        }
 
-        var state = new Goldilocks[Width];
-        for (var offset = 0; offset < input.Count; offset += Rate)
+        Goldilocks[] state = new Goldilocks[Width];
+        for (int offset = 0; offset < input.Count; offset += Rate)
         {
-            for (var index = 0; index < Rate && offset + index < input.Count; index++)
+            for (int index = 0; index < Rate && offset + index < input.Count; index++)
             {
                 state[index] = input[offset + index];
             }
@@ -63,19 +61,17 @@ internal static class Poseidon2
             Permute(state);
         }
 
-        var output = new Goldilocks[outputCount];
-        var written = 0;
+        Goldilocks[] output = new Goldilocks[outputCount];
+        int written = 0;
         while (written < outputCount)
         {
-            for (var index = 0; index < Rate && written < outputCount; index++)
+            for (int index = 0; index < Rate && written < outputCount; index++)
             {
                 output[written++] = state[index];
             }
 
             if (written < outputCount)
-            {
                 Permute(state);
-            }
         }
 
         return output;
@@ -84,9 +80,7 @@ internal static class Poseidon2
     public static void Permute(Span<Goldilocks> state)
     {
         if (state.Length != Width)
-        {
             throw new ArgumentException("Poseidon2 state must contain 12 elements.", nameof(state));
-        }
 
         ExternalLinearLayer(state);
         FullRounds(state, 0);
@@ -96,9 +90,9 @@ internal static class Poseidon2
 
     private static void FullRounds(Span<Goldilocks> state, int start)
     {
-        for (var round = start; round < start + HalfFullRounds; round++)
+        for (int round = start; round < start + HalfFullRounds; round++)
         {
-            for (var index = 0; index < Width; index++)
+            for (int index = 0; index < Width; index++)
             {
                 state[index] += new Goldilocks(ExternalConstants[round][index]);
                 state[index] = SBox(state[index]);
@@ -110,7 +104,7 @@ internal static class Poseidon2
 
     private static void PartialRounds(Span<Goldilocks> state)
     {
-        foreach (var roundConstant in InternalConstants)
+        foreach (ulong roundConstant in InternalConstants)
         {
             state[0] += new Goldilocks(roundConstant);
             state[0] = SBox(state[0]);
@@ -120,21 +114,21 @@ internal static class Poseidon2
 
     private static Goldilocks SBox(Goldilocks value)
     {
-        var square = value * value;
-        var sixth = square * value;
+        Goldilocks square = value * value;
+        Goldilocks sixth = square * value;
         sixth *= sixth;
         return sixth * value;
     }
 
     private static void ExternalLinearLayer(Span<Goldilocks> state)
     {
-        for (var offset = 0; offset < Width; offset += 4)
+        for (int offset = 0; offset < Width; offset += 4)
         {
-            var t01 = state[offset] + state[offset + 1];
-            var t23 = state[offset + 2] + state[offset + 3];
-            var total = t01 + t23;
-            var x0 = state[offset];
-            var x2 = state[offset + 2];
+            Goldilocks t01 = state[offset] + state[offset + 1];
+            Goldilocks t23 = state[offset + 2] + state[offset + 3];
+            Goldilocks total = t01 + t23;
+            Goldilocks x0 = state[offset];
+            Goldilocks x2 = state[offset + 2];
             state[offset] = total + t01 + state[offset + 1];
             state[offset + 1] = total + state[offset + 1] + x2 + x2;
             state[offset + 2] = total + t23 + state[offset + 3];
@@ -142,12 +136,12 @@ internal static class Poseidon2
         }
 
         Span<Goldilocks> sums = stackalloc Goldilocks[4];
-        for (var index = 0; index < sums.Length; index++)
+        for (int index = 0; index < sums.Length; index++)
         {
             sums[index] = state[index] + state[index + 4] + state[index + 8];
         }
 
-        for (var index = 0; index < Width; index++)
+        for (int index = 0; index < Width; index++)
         {
             state[index] += sums[index % 4];
         }
@@ -155,13 +149,13 @@ internal static class Poseidon2
 
     private static void InternalLinearLayer(Span<Goldilocks> state)
     {
-        var sum = Goldilocks.Zero;
-        for (var index = 0; index < Width; index++)
+        Goldilocks sum = Goldilocks.Zero;
+        for (int index = 0; index < Width; index++)
         {
             sum += state[index];
         }
 
-        for (var index = 0; index < Width; index++)
+        for (int index = 0; index < Width; index++)
         {
             state[index] = sum + (state[index] * new Goldilocks(MatrixDiagonal[index]));
         }
