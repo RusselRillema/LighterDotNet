@@ -120,14 +120,12 @@ internal static class L2TxAttributeEncoder
 
         // Real-valued attributes fill (type, value) pairs in ascending type order; the remaining
         // slots stay (0, 0). Nil-valued entries participate in JSON but never in the hash.
-        var elements = new Goldilocks[2 * ExchangeConstants.MaxAttributesPerTransaction];
-        var slot = 0;
+        Goldilocks[] elements = new Goldilocks[2 * ExchangeConstants.MaxAttributesPerTransaction];
+        int slot = 0;
         foreach (var (attributeType, value) in attributes)
         {
             if (value == 0)
-            {
                 continue;
-            }
 
             elements[2 * slot] = new Goldilocks(attributeType);
             elements[(2 * slot) + 1] = Goldilocks.FromSigned(value);
@@ -135,11 +133,9 @@ internal static class L2TxAttributeEncoder
         }
 
         if (slot == 0)
-        {
             return transactionHash;
-        }
 
-        var attributesHash = Poseidon2.HashToFp5(elements);
+        Fp5 attributesHash = Poseidon2.HashToFp5(elements);
         return Poseidon2.HashToFp5(
         [
             transactionHash[0],
@@ -155,6 +151,5 @@ internal static class L2TxAttributeEncoder
         ]);
     }
 
-    private static bool HasRealValue(SortedDictionary<byte, long> map, byte attributeType) =>
-        map.GetValueOrDefault(attributeType) != 0;
+    private static bool HasRealValue(SortedDictionary<byte, long> map, byte attributeType) => map.GetValueOrDefault(attributeType) != 0;
 }

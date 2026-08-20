@@ -47,15 +47,11 @@ public sealed class LighterSigner
         TimeProvider? timeProvider = null)
     {
         if (accountIndex <= 0)
-        {
             throw new ArgumentOutOfRangeException(nameof(accountIndex), "Account index must be positive.");
-        }
 
         // 255 is the nil api-key sentinel, which the exchange refuses to sign for.
         if (apiKeyIndex > ExchangeConstants.MaxApiKeyIndex)
-        {
             throw new ArgumentOutOfRangeException(nameof(apiKeyIndex), "API key index must be at most 254.");
-        }
 
         _signer = new SchnorrSigner(privateKeyHex);
         _accountIndex = accountIndex;
@@ -73,9 +69,7 @@ public sealed class LighterSigner
         set
         {
             if (value <= TimeSpan.Zero)
-            {
                 throw new ArgumentOutOfRangeException(nameof(value), "The transaction expiry must be positive.");
-            }
 
             _transactionExpiry = value;
         }
@@ -96,9 +90,7 @@ public sealed class LighterSigner
             source.CopyTo(chunk);
             var value = BinaryPrimitives.ReadUInt64LittleEndian(chunk);
             if (value >= Goldilocks.Modulus)
-            {
                 throw new InvalidOperationException("The auth message cannot be represented canonically.");
-            }
 
             elements[index] = new Goldilocks(value);
         }
@@ -114,14 +106,12 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(order);
         if (order.OrderExpiry == Default28DayOrderExpiry)
-        {
             order = order with { OrderExpiry = _timeProvider.GetUtcNow().AddDays(28).ToUnixTimeMilliseconds() };
-        }
 
         ValidateCreateOrder(order, nonce);
-        var attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
-        var expiredAt = GetTransactionExpiryMilliseconds();
-        var hash = ComputeTransactionHash(
+        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
+        long expiredAt = GetTransactionExpiryMilliseconds();
+        Fp5 hash = ComputeTransactionHash(
             CreateOrderTransactionType,
             nonce,
             expiredAt,
@@ -138,7 +128,7 @@ public sealed class LighterSigner
                 new Goldilocks(order.TriggerPrice),
                 Goldilocks.FromSigned(order.OrderExpiry),
             ]);
-        var payload = new CreateOrderPayload
+        CreateOrderPayload payload = new CreateOrderPayload
         {
             AccountIndex = _accountIndex,
             ApiKeyIndex = _apiKeyIndex,
