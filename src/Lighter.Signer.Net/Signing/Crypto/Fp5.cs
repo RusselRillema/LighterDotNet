@@ -1,12 +1,7 @@
 namespace Lighter.Signer.Cryptography;
 
 /// <summary>Quintic extension of the Goldilocks field, reduced by X^5 - 3.</summary>
-internal readonly record struct Fp5(
-    Goldilocks C0,
-    Goldilocks C1,
-    Goldilocks C2,
-    Goldilocks C3,
-    Goldilocks C4)
+internal readonly record struct Fp5(Goldilocks C0, Goldilocks C1, Goldilocks C2, Goldilocks C3, Goldilocks C4)
 {
     private static readonly Goldilocks W = new(3);
     private static readonly Goldilocks DthRoot = new(1_041_288_259_238_279_555UL);

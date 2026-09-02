@@ -28,10 +28,7 @@ public sealed class LighterApiClient : ILighterApiClient, IAsyncDisposable
         return response.Accounts[0];
     }
 
-    public async Task<string?> GetApiPublicKeyAsync(
-        long accountIndex,
-        byte apiKeyIndex,
-        CancellationToken cancellationToken)
+    public async Task<string?> GetApiPublicKeyAsync(long accountIndex, byte apiKeyIndex, CancellationToken cancellationToken)
     {
         ApiKeysResponse response = await GetAsync<ApiKeysResponse>($"api/v1/apikeys?account_index={accountIndex}&api_key_index={apiKeyIndex}", authToken: null, cancellationToken);
         return response.ApiKeys.SingleOrDefault(key => key.ApiKeyIndex == apiKeyIndex)?.PublicKey;
@@ -52,15 +49,10 @@ public sealed class LighterApiClient : ILighterApiClient, IAsyncDisposable
                ?? throw new LighterApiException($"The active {symbol} perpetual market was not found.");
     }
 
-    public Task<OrdersResponse> GetOpenOrdersAsync(
-        long accountIndex,
-        string authToken,
-        CancellationToken cancellationToken) =>
+    public Task<OrdersResponse> GetOpenOrdersAsync(long accountIndex, string authToken, CancellationToken cancellationToken) =>
         GetAsync<OrdersResponse>($"api/v1/accountActiveOrders?account_index={accountIndex}", authToken, cancellationToken);
 
-    public async Task<SendTransactionResponse> SendTransactionAsync(
-        SignedTransaction transaction,
-        CancellationToken cancellationToken)
+    public async Task<SendTransactionResponse> SendTransactionAsync(SignedTransaction transaction, CancellationToken cancellationToken)
     {
         using FormUrlEncodedContent form = new(
         [
@@ -79,8 +71,7 @@ public sealed class LighterApiClient : ILighterApiClient, IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    private async Task<T> GetAsync<T>(string relativeUri, string? authToken, CancellationToken cancellationToken)
-        where T : ApiResponse
+    private async Task<T> GetAsync<T>(string relativeUri, string? authToken, CancellationToken cancellationToken) where T : ApiResponse
     {
         using HttpRequestMessage request = new(HttpMethod.Get, relativeUri);
         if (authToken is not null)
@@ -90,8 +81,7 @@ public sealed class LighterApiClient : ILighterApiClient, IAsyncDisposable
         return await SendAsync<T>(request, cancellationToken);
     }
 
-    private async Task<T> SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)
-        where T : ApiResponse
+    private async Task<T> SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken) where T : ApiResponse
     {
         using HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         T? result;

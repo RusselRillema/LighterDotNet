@@ -5,9 +5,7 @@ namespace Lighter.Signer.Sample.Api;
 
 public static class EndpointResolver
 {
-    public static async Task<EndpointProfile> ResolveAsync(
-        ApiCredentials credentials,
-        CancellationToken cancellationToken)
+    public static async Task<EndpointProfile> ResolveAsync(ApiCredentials credentials, CancellationToken cancellationToken)
     {
         string computedPublicKey = NormalizeKey(new SchnorrSigner(credentials.PrivateKey).PublicKey);
         if (!string.Equals(computedPublicKey, NormalizeKey(credentials.PublicKey), StringComparison.Ordinal))
@@ -54,11 +52,7 @@ public static class EndpointResolver
         return new EndpointProfile("custom", baseUri, chainId);
     }
 
-    private static async Task<EndpointCheckResult> CheckServerAsync(
-        EndpointProfile profile,
-        ApiCredentials credentials,
-        string computedPublicKey,
-        CancellationToken cancellationToken)
+    private static async Task<EndpointCheckResult> CheckServerAsync(EndpointProfile profile, ApiCredentials credentials, string computedPublicKey, CancellationToken cancellationToken)
     {
         try
         {

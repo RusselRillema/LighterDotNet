@@ -740,15 +740,13 @@ static Scalar ScalarFromLimbs(params ulong[] limbs)
     return new Scalar(new BigInteger(bytes, isUnsigned: true, isBigEndian: false));
 }
 
-static void AssertEqual<T>(T expected, T actual, string description)
-    where T : notnull
+static void AssertEqual<T>(T expected, T actual, string description) where T : notnull
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
         throw new InvalidOperationException($"{description}: expected {expected}, received {actual}");
 }
 
-static void AssertSequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actual, string description)
-    where T : notnull
+static void AssertSequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actual, string description) where T : notnull
 {
     T[] expectedArray = expected.ToArray();
     T[] actualArray = actual.ToArray();
@@ -756,8 +754,7 @@ static void AssertSequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actua
         throw new InvalidOperationException($"{description} did not match. Expected [{string.Join(',', expectedArray)}], actual [{string.Join(',', actualArray)}].");
 }
 
-static void AssertThrows<TException>(Action action, string description)
-    where TException : Exception
+static void AssertThrows<TException>(Action action, string description) where TException : Exception
 {
     try
     {
@@ -798,9 +795,7 @@ sealed class ContractHandler : HttpMessageHandler
 
     public bool SawAuthorizationHeader { get; private set; }
 
-    protected override async Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request,
-        CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         if (request.RequestUri!.AbsolutePath.EndsWith("/sendTx", StringComparison.Ordinal))
         {
@@ -829,9 +824,7 @@ sealed class ContractHandler : HttpMessageHandler
 
 sealed class RejectionHandler : HttpMessageHandler
 {
-    protected override Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request,
-        CancellationToken cancellationToken) =>
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
         Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
         {
             Content = new StringContent(
@@ -873,19 +866,14 @@ sealed class StatefulFakeExchange : ILighterApiClient
             SupportedPriceDecimals = 6,
         });
 
-    public Task<OrdersResponse> GetOpenOrdersAsync(
-        long accountIndex,
-        string authToken,
-        CancellationToken cancellationToken) =>
+    public Task<OrdersResponse> GetOpenOrdersAsync(long accountIndex, string authToken, CancellationToken cancellationToken) =>
         Task.FromResult(new OrdersResponse
         {
             Code = 200,
             Orders = _openOrder is null ? [] : [_openOrder],
         });
 
-    public Task<SendTransactionResponse> SendTransactionAsync(
-        SignedTransaction transaction,
-        CancellationToken cancellationToken)
+    public Task<SendTransactionResponse> SendTransactionAsync(SignedTransaction transaction, CancellationToken cancellationToken)
     {
         using JsonDocument document = JsonDocument.Parse(transaction.TransactionInfo);
         if (transaction.TransactionType == LighterSigner.CreateOrderTransactionType)

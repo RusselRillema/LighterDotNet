@@ -9,9 +9,4 @@ namespace Lighter.Signer.Transactions;
 /// <param name="BaseAmount">New scaled base amount; 0 keeps the current amount.</param>
 /// <param name="Price">New scaled price; must be at least 1.</param>
 /// <param name="TriggerPrice">New trigger price; 0 for none.</param>
-public sealed record ModifyOrderRequest(
-    short MarketIndex,
-    long ExchangeOrderIndex,
-    long BaseAmount,
-    uint Price,
-    uint TriggerPrice);
+public sealed record ModifyOrderRequest(short MarketIndex, long ExchangeOrderIndex, long BaseAmount, uint Price, uint TriggerPrice);

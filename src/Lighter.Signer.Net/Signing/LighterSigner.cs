@@ -39,12 +39,7 @@ public sealed class LighterSigner
     /// <param name="apiKeyIndex">The api-key slot, 0-254.</param>
     /// <param name="chainId">304 for mainnet, 300 for testnet.</param>
     /// <param name="timeProvider">Clock override for testing; defaults to the system clock.</param>
-    public LighterSigner(
-        string privateKeyHex,
-        long accountIndex,
-        byte apiKeyIndex,
-        uint chainId,
-        TimeProvider? timeProvider = null)
+    public LighterSigner(string privateKeyHex, long accountIndex, byte apiKeyIndex, uint chainId, TimeProvider? timeProvider = null)
     {
         if (accountIndex <= 0 || accountIndex > ExchangeConstants.MaxAccountIndex)
             throw new ArgumentOutOfRangeException(nameof(accountIndex), "Account index must be between 1 and 2^48 - 2.");
@@ -212,12 +207,7 @@ public sealed class LighterSigner
         return ToSignedTransaction(ModifyOrderTransactionType, payload, hash);
     }
 
-    public SignedTransaction SignUpdateLeverage(
-        short marketIndex,
-        ushort initialMarginFraction,
-        byte marginMode,
-        long nonce,
-        L2TxAttributes? attributes = null)
+    public SignedTransaction SignUpdateLeverage(short marketIndex, ushort initialMarginFraction, byte marginMode, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce);
         SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
@@ -347,12 +337,7 @@ public sealed class LighterSigner
     /// Hashes the six-element framing shared by every transaction type, the transaction-specific
     /// elements, and finally the aggregated attribute hash, mirroring the Go signer.
     /// </summary>
-    private Fp5 ComputeTransactionHash(
-        byte transactionType,
-        long nonce,
-        long expiredAt,
-        SortedDictionary<byte, long>? attributeMap,
-        ReadOnlySpan<Goldilocks> transactionElements)
+    private Fp5 ComputeTransactionHash(byte transactionType, long nonce, long expiredAt, SortedDictionary<byte, long>? attributeMap, ReadOnlySpan<Goldilocks> transactionElements)
     {
         Goldilocks[] elements = new Goldilocks[6 + transactionElements.Length];
         elements[0] = new Goldilocks(_chainId);

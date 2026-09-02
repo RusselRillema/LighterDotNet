@@ -99,10 +99,7 @@ public sealed class TradingWorkflow
         await _output.WriteLineAsync("7. Placed order ID is absent from open orders: yes");
     }
 
-    private async Task<(OrdersResponse Response, OpenOrder Order)> WaitForPlacedOrderAsync(
-        long clientOrderIndex,
-        string authToken,
-        CancellationToken cancellationToken)
+    private async Task<(OrdersResponse Response, OpenOrder Order)> WaitForPlacedOrderAsync(long clientOrderIndex, string authToken, CancellationToken cancellationToken)
     {
         for (int attempt = 0; attempt < MaximumPollAttempts; attempt++)
         {
@@ -122,10 +119,7 @@ public sealed class TradingWorkflow
         throw new TimeoutException("The placed order did not appear in open orders.");
     }
 
-    private async Task<OrdersResponse> WaitForOrderRemovalAsync(
-        string orderId,
-        string authToken,
-        CancellationToken cancellationToken)
+    private async Task<OrdersResponse> WaitForOrderRemovalAsync(string orderId, string authToken, CancellationToken cancellationToken)
     {
         for (int attempt = 0; attempt < MaximumPollAttempts; attempt++)
         {

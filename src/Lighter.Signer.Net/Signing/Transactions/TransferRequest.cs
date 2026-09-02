@@ -11,11 +11,4 @@ namespace Lighter.Signer.Transactions;
 /// Exactly 32 bytes, given as 32 raw characters or as 64 hex characters (optionally
 /// 0x-prefixed). Shorter memos must be padded by the caller; the signer does not pad.
 /// </param>
-public sealed record TransferRequest(
-    long ToAccountIndex,
-    short AssetIndex,
-    byte FromRouteType,
-    byte ToRouteType,
-    long Amount,
-    long UsdcFee,
-    string Memo);
+public sealed record TransferRequest(long ToAccountIndex, short AssetIndex, byte FromRouteType, byte ToRouteType, long Amount, long UsdcFee, string Memo);

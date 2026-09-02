@@ -8,8 +8,4 @@ namespace Lighter.Signer.Transactions;
 /// For approve-integrator transactions, the human-readable message an account's L1 (Ethereum)
 /// key signs to produce the payload's L1Sig; <see langword="null"/> for other transaction types.
 /// </param>
-public sealed record SignedTransaction(
-    byte TransactionType,
-    string TransactionInfo,
-    string TransactionHash,
-    string? L1SignatureBody = null);
+public sealed record SignedTransaction(byte TransactionType, string TransactionInfo, string TransactionHash, string? L1SignatureBody = null);
