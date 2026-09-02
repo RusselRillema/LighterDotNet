@@ -1,10 +1,9 @@
+using Lighter.Signer.Sample.Api;
+using Lighter.Signer.Sample.Configuration;
+using Lighter.Signer.Transactions;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Lighter.Signer.Sample.Api;
-using Lighter.Signer.Sample.Configuration;
-using Lighter.Signer;
-using Lighter.Signer.Transactions;
 
 namespace Lighter.Signer.Sample.Workflow;
 
@@ -21,13 +20,7 @@ public sealed class TradingWorkflow
     private readonly TimeProvider _timeProvider;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
-    public TradingWorkflow(
-        ILighterApiClient apiClient,
-        ApiCredentials credentials,
-        LighterSigner signer,
-        TextWriter output,
-        TimeProvider? timeProvider = null,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+    public TradingWorkflow(ILighterApiClient apiClient, ApiCredentials credentials, LighterSigner signer, TextWriter output, TimeProvider? timeProvider = null, Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         _apiClient = apiClient;
         _credentials = credentials;
@@ -171,8 +164,7 @@ public sealed class TradingWorkflow
     {
         try
         {
-            JsonObject? payload = JsonNode.Parse(transactionInfo) as JsonObject;
-            if (payload is null)
+            if (JsonNode.Parse(transactionInfo) is not JsonObject payload)
                 return "[UNAVAILABLE]";
 
             foreach (string property in new[] { "AccountIndex", "FromAccountIndex", "ApiKeyIndex", "Sig", "L1Sig" })
