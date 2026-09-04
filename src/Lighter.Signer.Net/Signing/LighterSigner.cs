@@ -351,11 +351,7 @@ public sealed class LighterSigner
     }
 
     private static SignedTransaction ToSignedTransaction<TPayload>(byte transactionType, TPayload payload, Fp5 hash, string? l1SignatureBody = null) =>
-        new(
-            transactionType,
-            JsonSerializer.Serialize(payload, JsonOptions),
-            Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant(),
-            l1SignatureBody);
+        new(transactionType, JsonSerializer.Serialize(payload, JsonOptions), Convert.ToHexString(hash.ToLittleEndianBytes()).ToLowerInvariant(), l1SignatureBody);
 
     /// <summary>
     /// The memo travels as exactly 32 bytes; matching the Go signer, the string form must be
@@ -409,11 +405,9 @@ public sealed class LighterSigner
 
     private static string ToHex16(ulong value) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{value:x16}");
 
-    private static bool IsPerpetualMarket(short marketIndex) =>
-        marketIndex is >= ExchangeConstants.MinPerpetualMarketIndex and <= ExchangeConstants.MaxPerpetualMarketIndex;
+    private static bool IsPerpetualMarket(short marketIndex) => marketIndex is >= ExchangeConstants.MinPerpetualMarketIndex and <= ExchangeConstants.MaxPerpetualMarketIndex;
 
-    private static bool IsSpotMarket(short marketIndex) =>
-        marketIndex is >= ExchangeConstants.MinSpotMarketIndex and <= ExchangeConstants.MaxSpotMarketIndex;
+    private static bool IsSpotMarket(short marketIndex) => marketIndex is >= ExchangeConstants.MinSpotMarketIndex and <= ExchangeConstants.MaxSpotMarketIndex;
 
     private static void ValidateMarketIndex(short marketIndex, string paramName)
     {
