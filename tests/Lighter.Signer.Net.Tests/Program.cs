@@ -121,6 +121,8 @@ static Task TestSchnorrAsync()
 // The known-answer transaction hashes in the tests below were generated with the official Go
 // signer, github.com/elliottech/lighter-go v1.0.8-0.20260806100336-17f2d60e4cf5 (commit
 // 17f2d60e4cf5), by constructing each txtypes.L2*TxInfo with these exact values and calling Hash(304).
+// Order-version vectors (attribute 8) were generated the same way with commit f9829c1, which includes
+// 10278d9 (modify_order_version); every earlier vector reproduces unchanged on that commit.
 static Task TestTransactionHashesAsync()
 {
     SignedTransaction create = CreateTestSigner(1_784_267_548_433).SignCreateOrder(new OrderRequest(7, 123, 10, 1_000_000, false, 0, 1, false, 0, 1_999_999_999_999), 42);
@@ -238,6 +240,15 @@ static Task TestNewValidatorRejectionsAsync()
     AssertThrows<ArgumentOutOfRangeException>(
         () => signer.SignModifyOrder(new ModifyOrderRequest(7, 10, 10, 0, 0), 60),
         "modify price zero");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(7, 10, 10, 100, 0, -1), 60),
+        "modify negative order version");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(7, 10, 10, 100, 0, 1L << 48), 60),
+        "modify order version above the maximum");
+    AssertThrows<ArgumentException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(7, 10, 10, 100, 0, 100), 60, new L2TxAttributes { IntegratorAccountIndex = 1_000, IntegratorTakerFee = 400, IntegratorMakerFee = 200, SkipNonce = 1 }),
+        "modify order version as a fifth attribute");
 
     AssertThrows<ArgumentOutOfRangeException>(
         () => signer.SignUpdateLeverage(255, 500, 0, 60),
@@ -405,6 +416,36 @@ static Task TestAttributeAggregationAsync()
         AssertEqual(1L, attributes.GetProperty("7").GetInt64(), "self-trade equality attribute encoding");
     }
 
+    // A modify-order version travels as attribute 8, mirroring the Python SDK's order_version.
+    ModifyOrderRequest versionedModify = new(7, 281_474_976_710_700, 10, 1_000_000, 0, 100);
+    SignedTransaction versioned = CreateTestSigner(1_784_267_548_436).SignModifyOrder(versionedModify, 45);
+    AssertEqual(
+        "3acc7977b2904e6ceae8122590bdf7e34b11f2edcb2ec6cd46dabb85ae3019e39510e53f918ed855",
+        versioned.TransactionHash,
+        "order-version aggregated hash");
+    using (JsonDocument payload = JsonDocument.Parse(versioned.TransactionInfo))
+    {
+        AssertEqual(100L, payload.RootElement.GetProperty("L2TxAttributes").GetProperty("8").GetInt64(), "order-version attribute encoding");
+    }
+
+    SignedTransaction versionedSkipNonce = CreateTestSigner(1_784_267_548_436).SignModifyOrder(versionedModify, 45, skipNonceAttributes);
+    AssertEqual(
+        "74968c2fd57ea8a5f2a98b4b877c27e048084fb91516c455aa61b660935fdb772fee30c0cbe72ba0",
+        versionedSkipNonce.TransactionHash,
+        "order-version with skip-nonce aggregated hash");
+    using (JsonDocument payload = JsonDocument.Parse(versionedSkipNonce.TransactionInfo))
+    {
+        JsonElement attributes = payload.RootElement.GetProperty("L2TxAttributes");
+        AssertEqual(1L, attributes.GetProperty("4").GetInt64(), "skip-nonce beside order-version encoding");
+        AssertEqual(100L, attributes.GetProperty("8").GetInt64(), "order-version beside skip-nonce encoding");
+    }
+
+    SignedTransaction maxVersion = CreateTestSigner(1_784_267_548_436).SignModifyOrder(versionedModify with { OrderVersion = ExchangeConstants.MaxTimestampMilliseconds }, 45);
+    AssertEqual(
+        "a427c0259f3b78c67daf4ec75f02be867ee246c0b2c54398b14e57d788506c0f62ae1bef9d6b3c0e",
+        maxVersion.TransactionHash,
+        "maximum order-version aggregated hash");
+
     // Attribute wiring on the remaining four transaction types, each pinned by a Go vector.
     // The hash covers the attribute map independently of the payload, so the JSON encoding
     // is asserted separately to catch a payload that drops the attributes.
@@ -463,6 +504,15 @@ static Task TestNilAttributesPreserveHashAsync()
     JsonElement attributes = payload.RootElement.GetProperty("L2TxAttributes");
     AssertEqual(0L, attributes.GetProperty("1").GetInt64(), "nil integrator attribute encoding");
     AssertEqual(0L, attributes.GetProperty("6").GetInt64(), "nil self-trade attribute encoding");
+
+    // Order version 0 is the nil value: omitted from the payload and absent from the hash.
+    SignedTransaction unversioned = CreateTestSigner(1_784_267_548_436).SignModifyOrder(new ModifyOrderRequest(7, 281_474_976_710_700, 10, 1_000_000, 0, ExchangeConstants.NilOrderVersion), 45);
+    AssertEqual(
+        "eb878794bbe31fd893b06c4054726538b054e62419ba34455f9f1fbaff7205fe537c04d1b0f6376c",
+        unversioned.TransactionHash,
+        "nil order-version hash");
+    using JsonDocument unversionedPayload = JsonDocument.Parse(unversioned.TransactionInfo);
+    AssertEqual(JsonValueKind.Null, unversionedPayload.RootElement.GetProperty("L2TxAttributes").ValueKind, "nil order-version attributes encoding");
     return Task.CompletedTask;
 }
 

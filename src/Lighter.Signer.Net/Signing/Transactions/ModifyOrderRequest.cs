@@ -9,4 +9,10 @@ namespace Lighter.Signer.Transactions;
 /// <param name="BaseAmount">New scaled base amount; 0 keeps the current amount.</param>
 /// <param name="Price">New scaled price; must be at least 1.</param>
 /// <param name="TriggerPrice">New trigger price; 0 for none.</param>
-public sealed record ModifyOrderRequest(short MarketIndex, long ExchangeOrderIndex, long BaseAmount, uint Price, uint TriggerPrice);
+/// <param name="OrderVersion">
+/// Client-chosen version guard up to 2^48 - 1, mirroring the Python SDK's order_version: the exchange
+/// applies the modify only when this exceeds the order's stored version and then stores it, so stale or
+/// retried modifies cannot overwrite a newer one. A millisecond timestamp is the usual choice;
+/// 0 (<see cref="ExchangeConstants.NilOrderVersion"/>) leaves the order unversioned.
+/// </param>
+public sealed record ModifyOrderRequest(short MarketIndex, long ExchangeOrderIndex, long BaseAmount, uint Price, uint TriggerPrice, long OrderVersion = ExchangeConstants.NilOrderVersion);

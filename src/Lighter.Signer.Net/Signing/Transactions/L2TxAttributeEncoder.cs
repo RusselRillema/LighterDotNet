@@ -13,31 +13,36 @@ internal static class L2TxAttributeEncoder
 
     internal const byte SelfTradeBehaviorModeType = 6;
     internal const byte SelfTradeEqualityModeType = 7;
+    internal const byte OrderVersionType = 8;
 
-    internal static SortedDictionary<byte, long>? ToValidatedMap(L2TxAttributes? attributes)
+    internal static SortedDictionary<byte, long>? ToValidatedMap(L2TxAttributes? attributes, long orderVersion = ExchangeConstants.NilOrderVersion)
     {
-        if (attributes is null)
-            return null;
-
         SortedDictionary<byte, long> map = new();
-        if (attributes.IntegratorAccountIndex.HasValue)
-            map[IntegratorAccountIndexType] = attributes.IntegratorAccountIndex.Value;
-        if (attributes.IntegratorTakerFee.HasValue)
-            map[IntegratorTakerFeeType] = attributes.IntegratorTakerFee.Value;
-        if (attributes.IntegratorMakerFee.HasValue)
-            map[IntegratorMakerFeeType] = attributes.IntegratorMakerFee.Value;
-        if (attributes.SkipNonce.HasValue)
-            map[SkipNonceType] = attributes.SkipNonce.Value;
-        if (attributes.SelfTradeBehaviorMode.HasValue)
-            map[SelfTradeBehaviorModeType] = attributes.SelfTradeBehaviorMode.Value;
-        if (attributes.SelfTradeEqualityMode.HasValue)
-            map[SelfTradeEqualityModeType] = attributes.SelfTradeEqualityMode.Value;
+        if (attributes is not null)
+        {
+            if (attributes.IntegratorAccountIndex.HasValue)
+                map[IntegratorAccountIndexType] = attributes.IntegratorAccountIndex.Value;
+            if (attributes.IntegratorTakerFee.HasValue)
+                map[IntegratorTakerFeeType] = attributes.IntegratorTakerFee.Value;
+            if (attributes.IntegratorMakerFee.HasValue)
+                map[IntegratorMakerFeeType] = attributes.IntegratorMakerFee.Value;
+            if (attributes.SkipNonce.HasValue)
+                map[SkipNonceType] = attributes.SkipNonce.Value;
+            if (attributes.SelfTradeBehaviorMode.HasValue)
+                map[SelfTradeBehaviorModeType] = attributes.SelfTradeBehaviorMode.Value;
+            if (attributes.SelfTradeEqualityMode.HasValue)
+                map[SelfTradeEqualityModeType] = attributes.SelfTradeEqualityMode.Value;
+        }
+
+        // Matching the Go shared library, the nil order version is omitted rather than encoded as 0.
+        if (orderVersion != ExchangeConstants.NilOrderVersion)
+            map[OrderVersionType] = orderVersion;
 
         if (map.Count == 0)
             return null;
 
         if (map.Count > ExchangeConstants.MaxAttributesPerTransaction)
-            throw new ArgumentException("A transaction supports at most four L2 transaction attributes.", nameof(attributes));
+            throw new ArgumentException("A transaction supports at most four L2 transaction attributes, counting a modify-order version.", nameof(attributes));
 
         foreach ((byte attributeType, long value) in map)
         {
@@ -48,6 +53,7 @@ internal static class L2TxAttributeEncoder
                 SkipNonceType => (1L, 1L),
                 SelfTradeBehaviorModeType => (0L, (long)SelfTradeBehavior.Reduce),
                 SelfTradeEqualityModeType => (0L, (long)SelfTradeEquality.MasterAccountIndex),
+                OrderVersionType => (0L, ExchangeConstants.MaxTimestampMilliseconds),
                 _ => throw new ArgumentException("The attribute type is unknown.", nameof(attributes)),
             };
             if (value < minValue || value > maxValue)

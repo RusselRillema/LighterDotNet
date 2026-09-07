@@ -2,7 +2,8 @@ namespace Lighter.Signer.Transactions;
 
 /// <summary>
 /// Optional L2 transaction attributes. A field left <see langword="null"/> is omitted from the
-/// transaction; at most four fields may be set on a single transaction.
+/// transaction; at most four attributes may be set on a single transaction, counting a
+/// modify-order's <see cref="ModifyOrderRequest.OrderVersion"/>.
 /// </summary>
 public sealed record L2TxAttributes
 {
