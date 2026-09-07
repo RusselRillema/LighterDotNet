@@ -35,6 +35,7 @@ const string VectorMemoHex = "6f6666696369616c2d7472616e736665722d766563746f7200
     ("Enum factory equals byte construction", TestEnumFactoryAsync),
     ("Custom transaction expiry honored", TestTransactionExpiryAsync),
     ("Negative and spot-market inputs match official Go signer", TestNegativeAndSpotInputHashesAsync),
+    ("L1 signature attaches to approve-integrator payload", TestL1SignatureAttachmentAsync),
     ("Package exposes only signer API types", TestPublicSurfaceAsync),
     ("REST client uses official wire contract", TestRestWireContractAsync),
     ("REST client surfaces exchange rejection", TestRestFailureAsync),
@@ -633,6 +634,38 @@ static Task TestNegativeAndSpotInputHashesAsync()
     AssertThrows<ArgumentOutOfRangeException>(
         () => strictSigner.SignTransfer(new TransferRequest(2, 1, 0, 1, 100, 0, new string('0', 64)), -1),
         "negative transfer nonce");
+    return Task.CompletedTask;
+}
+
+static Task TestL1SignatureAttachmentAsync()
+{
+    SignedTransaction approval = CreateTestSigner(1_784_267_548_438).SignApproveIntegrator(new ApproveIntegratorRequest(12_345, 100, 50, 100, 50, 1_999_999_999_999), 47);
+
+    // Produced the way the official Python SDK signs approvals: eth_account's sign_message over
+    // encode_defunct(text: L1SignatureBody), here with the throwaway key 0x0101...01 (address 0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1).
+    const string l1Signature = "0x9a38d1679136f212027f16a3f178d0e67864f77af3065a208307dbc91ff9ce3a58d86a1a7575986cd7c7e505b918560eb4d0ae9d20baa8a74b22d9a2f370ec0b1c";
+    SignedTransaction attached = approval.WithL1Signature(l1Signature);
+    AssertEqual(approval.TransactionInfo.Replace("\"L1Sig\":\"\"", "\"L1Sig\":\"" + l1Signature + "\"", StringComparison.Ordinal), attached.TransactionInfo, "attached payload differs only in L1Sig");
+    AssertEqual(approval.TransactionHash, attached.TransactionHash, "attached transaction hash");
+    AssertEqual(approval.TransactionType, attached.TransactionType, "attached transaction type");
+    AssertEqual(approval.L1SignatureBody!, attached.L1SignatureBody!, "attached L1 signature body");
+    using (JsonDocument payload = JsonDocument.Parse(attached.TransactionInfo))
+    {
+        AssertEqual(l1Signature, payload.RootElement.GetProperty("L1Sig").GetString()!, "attached L1 signature encoding");
+        AssertEqual(12_345L, payload.RootElement.GetProperty("IntegratorAccountIndex").GetInt64(), "attached payload integrator");
+    }
+
+    // Transfer payloads carry L1Sig too, so a transfer body signed elsewhere attaches the same way.
+    SignedTransaction transfer = CreateTestSigner(1_784_267_548_435).SignTransfer(new TransferRequest(2, 1, 0, 1, 4_294_967_299, 17, VectorMemoHex), 44).WithL1Signature(l1Signature);
+    using (JsonDocument payload = JsonDocument.Parse(transfer.TransactionInfo))
+    {
+        AssertEqual(l1Signature, payload.RootElement.GetProperty("L1Sig").GetString()!, "attached transfer L1 signature encoding");
+    }
+
+    AssertThrows<ArgumentException>(() => approval.WithL1Signature(l1Signature[2..]), "L1 signature without the 0x prefix");
+    AssertThrows<ArgumentException>(() => approval.WithL1Signature(l1Signature[..130]), "L1 signature shorter than 65 bytes");
+    AssertThrows<ArgumentException>(() => approval.WithL1Signature("0x" + new string('z', 130)), "L1 signature with non-hex characters");
+    AssertThrows<InvalidOperationException>(() => CreateTestSigner(1_784_267_548_434).SignCancelOrder(7, 281_474_976_710_700, 43).WithL1Signature(l1Signature), "L1 signature on a transaction without L1Sig");
     return Task.CompletedTask;
 }
 

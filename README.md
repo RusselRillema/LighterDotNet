@@ -112,6 +112,21 @@ Each transaction-signing method returns a `SignedTransaction` containing:
 - `L1SignatureBody` — for approve-integrator transactions, the human-readable message an
   account's L1 (Ethereum) key signs to authorize the approval; `null` otherwise.
 
+Approving a third-party integrator with non-zero fees also needs that message signed by the
+account's Ethereum key as an EIP-191 personal message. The library is dependency-free and does not
+sign with Ethereum keys, so sign `L1SignatureBody` with your own tooling and attach the result.
+Matching the official Python SDK, `WithL1Signature` patches the signature into the payload's
+`L1Sig` field and leaves the transaction hash untouched:
+
+```csharp
+SignedTransaction approval = signer.SignApproveIntegrator(new ApproveIntegratorRequest(6, 1_000, 1_000, 1_000, 1_000, approvalExpiry), nonce);
+string l1Signature = SignPersonalMessage(approval.L1SignatureBody!); // 0x-prefixed 65-byte hex from your Ethereum signer
+SignedTransaction ready = approval.WithL1Signature(l1Signature);
+```
+
+Approvals of a sub-account under the same master account, zero-fee approvals, and revocations
+(approval expiry `0`) are submitted without an L1 signature, exactly as the official SDKs do.
+
 The transfer memo is a string carrying exactly 32 bytes: 32 raw characters, or 64 hex
 characters (optionally `0x`-prefixed). Matching the official signers, shorter memos are not
 padded automatically.
