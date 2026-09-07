@@ -1,7 +1,7 @@
 namespace Lighter.Signer.Transactions;
 
 /// <summary>Sub-account transfer parameters.</summary>
-/// <param name="ToAccountIndex">Destination account index; -1 to 2^48 - 2 (0 is the treasury).</param>
+/// <param name="ToAccountIndex">Destination account index; -1 to 2^48 - 2. 0 is the treasury account; -1 passes validation to mirror the Go signer although no account exists there.</param>
 /// <param name="AssetIndex">The asset to transfer; 1-62.</param>
 /// <param name="FromRouteType">0 = perps, 1 = spot.</param>
 /// <param name="ToRouteType">0 = perps, 1 = spot.</param>

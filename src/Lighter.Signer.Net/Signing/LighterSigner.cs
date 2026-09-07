@@ -577,7 +577,7 @@ public sealed class LighterSigner
 
     private static void ValidateTransfer(TransferRequest transfer, long nonce)
     {
-        // Matching Go, -1 and 0 (the treasury account) are valid transfer destinations.
+        // Matching Go's blanket MinAccountIndex floor, -1 passes although no account exists there; 0 is the treasury account.
         if (transfer.ToAccountIndex is < ExchangeConstants.MinAccountIndex or > ExchangeConstants.MaxAccountIndex)
             throw new ArgumentOutOfRangeException(nameof(transfer), "Destination account index must be between -1 and 2^48 - 2.");
 

@@ -182,7 +182,7 @@ static Task TestTransferMemoDecodingAsync()
 
 static Task TestTransferBoundsAsync()
 {
-    // Matching Go, the treasury account (0) and -1 are valid transfer destinations.
+    // Matching Go, the treasury account (0) and -1 pass destination validation.
     AssertEqual(
         "4cfca04c7a41decfdb7c1c1269776ba79130688809c02a9dc7f4f7275c24d7579ebfbfd2acefa5f7",
         CreateTestSigner(1_784_267_548_443)

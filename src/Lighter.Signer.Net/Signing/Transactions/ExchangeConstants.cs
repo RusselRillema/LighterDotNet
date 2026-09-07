@@ -22,8 +22,11 @@ public static class ExchangeConstants
     public const short MaxSpotMarketIndex = 4094;
 
     /// <summary>
-    /// Lowest account index; -1 is accepted only as an integrator account index, the signer's
-    /// own account must be positive. Mirrors Go's MinAccountIndex.
+    /// Lowest account index the Go signer accepts wherever an account is referenced: transfer
+    /// destinations and integrator account indices may be -1 as well as 0, the treasury account
+    /// (Go's TreasuryAccountIndex). No account exists at -1 (the account API reports it as not
+    /// found), so -1 only passes signer validation; the signer's own account must be positive.
+    /// Mirrors Go's MinAccountIndex.
     /// </summary>
     public const long MinAccountIndex = -1;
 
