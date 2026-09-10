@@ -119,10 +119,8 @@ static Task TestSchnorrAsync()
 }
 
 // The known-answer transaction hashes in the tests below were generated with the official Go
-// signer, github.com/elliottech/lighter-go v1.0.8-0.20260806100336-17f2d60e4cf5 (commit
-// 17f2d60e4cf5), by constructing each txtypes.L2*TxInfo with these exact values and calling Hash(304).
-// The order-version vectors (attribute 8) were generated the same way with commit f9829c1, which includes
-// 10278d9 (modify_order_version); every earlier vector reproduces unchanged on that commit.
+// signer, github.com/elliottech/lighter-go, by constructing each txtypes.L2*TxInfo with these exact
+// values and calling Hash(304). The order-version vectors need a lighter-go that supports attribute 8.
 static Task TestTransactionHashesAsync()
 {
     SignedTransaction create = CreateTestSigner(1_784_267_548_433).SignCreateOrder(new OrderRequest(7, 123, 10, 1_000_000, false, 0, 1, false, 0, 1_999_999_999_999), 42);
