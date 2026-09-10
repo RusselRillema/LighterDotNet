@@ -121,8 +121,8 @@ The signer expects prepared inputs, including the correct chain ID, nonce, scale
 ### L2 transaction attributes
 
 Every transaction-signing method accepts an optional `L2TxAttributes` for integrator fees,
-nonce skipping, and self-trade behavior. Set only the fields you need — at most four per
-transaction — and leave the rest `null`:
+nonce skipping, self-trade behavior, and modify-order versions. Set only the fields you need —
+at most four per transaction — and leave the rest `null`:
 
 ```csharp
 var signedWithAttributes = signer.SignCreateOrder(order, nonce, new L2TxAttributes
@@ -134,16 +134,15 @@ var signedWithAttributes = signer.SignCreateOrder(order, nonce, new L2TxAttribut
 Attributes at their default values (for example a fee of `0`) appear in the payload but,
 matching the Go signer, do not change the transaction hash.
 
-`ModifyOrderRequest.OrderVersion` mirrors the Python SDK's `order_version`: the exchange applies a
+`OrderVersion` mirrors the Python SDK's `order_version` for modify orders. The exchange applies a
 versioned modify only when the version is greater than the order's current one, so stale or retried
-modifies cannot overwrite a newer one. It travels as L2 transaction attribute 8 and counts toward the
-four-attribute limit; the default `0` (`ExchangeConstants.NilOrderVersion`) leaves the order
-unversioned, and a millisecond timestamp is the usual choice:
+modifies cannot overwrite a newer one. A millisecond timestamp is the usual choice:
 
 ```csharp
-SignedTransaction versioned = signer.SignModifyOrder(
-    new ModifyOrderRequest(7, exchangeOrderIndex, 20_000_000, 1_010_000, 0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
-    nonce);
+SignedTransaction versioned = signer.SignModifyOrder(modify, nonce, new L2TxAttributes
+{
+    OrderVersion = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+});
 ```
 
 ### Transaction expiry

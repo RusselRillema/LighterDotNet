@@ -69,9 +69,6 @@ public static class ExchangeConstants
     /// <summary>Lowest order price. Mirrors Go's MinOrderPrice.</summary>
     public const uint MinOrderPrice = 1;
 
-    /// <summary>The unversioned modify-order sentinel; a version is otherwise 1 to 2^48 - 1. Mirrors Go's NilOrderVersion.</summary>
-    public const long NilOrderVersion = 0;
-
     /// <summary>The fee denominator: fees are expressed in millionths and capped at this value. Mirrors Go's FeeTick.</summary>
     public const long FeeTick = 1_000_000;
 

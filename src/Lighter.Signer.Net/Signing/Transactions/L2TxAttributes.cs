@@ -2,8 +2,7 @@ namespace Lighter.Signer.Transactions;
 
 /// <summary>
 /// Optional L2 transaction attributes. A field left <see langword="null"/> is omitted from the
-/// transaction; at most four attributes may be set on a single transaction, counting a
-/// modify-order's <see cref="ModifyOrderRequest.OrderVersion"/>.
+/// transaction; at most four fields may be set on a single transaction.
 /// </summary>
 public sealed record L2TxAttributes
 {
@@ -24,4 +23,7 @@ public sealed record L2TxAttributes
 
     /// <summary>A <see cref="SelfTradeEquality"/> value; cannot be combined with integrator fees.</summary>
     public byte? SelfTradeEqualityMode { get; init; }
+
+    /// <summary>Modify-order version (the Python SDK's order_version), 0 to 2^48 - 1; the exchange applies a modify only when it exceeds the order's stored version. 0 skips the check.</summary>
+    public long? OrderVersion { get; init; }
 }

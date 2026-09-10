@@ -176,7 +176,7 @@ public sealed class LighterSigner
     {
         ArgumentNullException.ThrowIfNull(modify);
         ValidateModifyOrder(modify, nonce);
-        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes, modify.OrderVersion);
+        SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
         long expiredAt = GetTransactionExpiryMilliseconds();
         Fp5 hash = ComputeTransactionHash(
             ModifyOrderTransactionType,
@@ -533,10 +533,6 @@ public sealed class LighterSigner
         // The upper price and trigger-price bounds (2^32 - 1) are implicit in the uint fields.
         if (modify.Price < ExchangeConstants.MinOrderPrice)
             throw new ArgumentOutOfRangeException(nameof(modify), "Price must be at least 1.");
-
-        // Zero leaves the order unversioned; the exchange rejects a version at or below the stored one.
-        if (modify.OrderVersion is < ExchangeConstants.NilOrderVersion or > ExchangeConstants.MaxTimestampMilliseconds)
-            throw new ArgumentOutOfRangeException(nameof(modify), "Order version must be 0 (unversioned) or at most 2^48 - 1.");
 
         ValidateNonce(nonce);
     }
