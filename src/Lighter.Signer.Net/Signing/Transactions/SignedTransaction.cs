@@ -36,7 +36,6 @@ public sealed record SignedTransaction(byte TransactionType, string TransactionI
             throw new ArgumentException("The L1 signature hex encoding is invalid.", nameof(l1Signature), exception);
         }
 
-        // Only the L1Sig value is spliced, so every other byte of the signed payload is untouched.
         byte[] payload = Encoding.UTF8.GetBytes(TransactionInfo);
         Utf8JsonReader reader = new(payload);
         while (reader.Read())

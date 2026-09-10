@@ -649,6 +649,8 @@ static Task TestL1SignatureAttachmentAsync()
     AssertEqual(approval.TransactionHash, attached.TransactionHash, "attached transaction hash");
     AssertEqual(approval.TransactionType, attached.TransactionType, "attached transaction type");
     AssertEqual(approval.L1SignatureBody!, attached.L1SignatureBody!, "attached L1 signature body");
+    string replacement = "0x" + new string('a', 130);
+    AssertEqual(attached.TransactionInfo.Replace(l1Signature, replacement, StringComparison.Ordinal), attached.WithL1Signature(replacement).TransactionInfo, "re-attaching replaces the previous L1Sig");
     using (JsonDocument payload = JsonDocument.Parse(attached.TransactionInfo))
     {
         AssertEqual(l1Signature, payload.RootElement.GetProperty("L1Sig").GetString()!, "attached L1 signature encoding");
@@ -662,6 +664,7 @@ static Task TestL1SignatureAttachmentAsync()
         AssertEqual(l1Signature, payload.RootElement.GetProperty("L1Sig").GetString()!, "attached transfer L1 signature encoding");
     }
 
+    AssertThrows<ArgumentNullException>(() => approval.WithL1Signature(null!), "null L1 signature");
     AssertThrows<ArgumentException>(() => approval.WithL1Signature(l1Signature[2..]), "L1 signature without the 0x prefix");
     AssertThrows<ArgumentException>(() => approval.WithL1Signature(l1Signature[..130]), "L1 signature shorter than 65 bytes");
     AssertThrows<ArgumentException>(() => approval.WithL1Signature("0x" + new string('z', 130)), "L1 signature with non-hex characters");
