@@ -13,6 +13,7 @@ internal static class L2TxAttributeEncoder
 
     internal const byte SelfTradeBehaviorModeType = 6;
     internal const byte SelfTradeEqualityModeType = 7;
+    internal const byte OrderVersionType = 8;
 
     internal static SortedDictionary<byte, long>? ToValidatedMap(L2TxAttributes? attributes)
     {
@@ -32,6 +33,8 @@ internal static class L2TxAttributeEncoder
             map[SelfTradeBehaviorModeType] = attributes.SelfTradeBehaviorMode.Value;
         if (attributes.SelfTradeEqualityMode.HasValue)
             map[SelfTradeEqualityModeType] = attributes.SelfTradeEqualityMode.Value;
+        if (attributes.OrderVersion.HasValue)
+            map[OrderVersionType] = attributes.OrderVersion.Value;
 
         if (map.Count == 0)
             return null;
@@ -48,6 +51,7 @@ internal static class L2TxAttributeEncoder
                 SkipNonceType => (1L, 1L),
                 SelfTradeBehaviorModeType => (0L, (long)SelfTradeBehavior.Reduce),
                 SelfTradeEqualityModeType => (0L, (long)SelfTradeEquality.MasterAccountIndex),
+                OrderVersionType => (0L, ExchangeConstants.MaxTimestampMilliseconds),
                 _ => throw new ArgumentException("The attribute type is unknown.", nameof(attributes)),
             };
             if (value < minValue || value > maxValue)

@@ -23,4 +23,7 @@ public sealed record L2TxAttributes
 
     /// <summary>A <see cref="SelfTradeEquality"/> value; cannot be combined with integrator fees.</summary>
     public byte? SelfTradeEqualityMode { get; init; }
+
+    /// <summary>Modify-order version (the Python SDK's order_version), 0 to 2^48 - 1; the exchange applies a modify only when it exceeds the order's stored version. 0 skips the check.</summary>
+    public long? OrderVersion { get; init; }
 }
