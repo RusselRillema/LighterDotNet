@@ -485,6 +485,9 @@ static Task TestAttributeValidationAsync()
     AssertThrows<ArgumentException>(
         () => Sign(new L2TxAttributes { IntegratorTakerFee = 400 }),
         "fees without an integrator account index");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => Sign(new L2TxAttributes { IntegratorAccountIndex = -1 }),
+        "integrator account index attribute below zero");
     AssertThrows<ArgumentException>(
         () => Sign(new L2TxAttributes { IntegratorAccountIndex = 1_000, IntegratorTakerFee = 400, SelfTradeBehaviorMode = 1 }),
         "fees combined with self-trade attributes");
