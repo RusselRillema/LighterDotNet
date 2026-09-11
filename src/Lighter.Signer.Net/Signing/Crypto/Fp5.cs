@@ -1,12 +1,7 @@
 namespace Lighter.Signer.Cryptography;
 
 /// <summary>Quintic extension of the Goldilocks field, reduced by X^5 - 3.</summary>
-internal readonly record struct Fp5(
-    Goldilocks C0,
-    Goldilocks C1,
-    Goldilocks C2,
-    Goldilocks C3,
-    Goldilocks C4)
+internal readonly record struct Fp5(Goldilocks C0, Goldilocks C1, Goldilocks C2, Goldilocks C3, Goldilocks C4)
 {
     private static readonly Goldilocks W = new(3);
     private static readonly Goldilocks DthRoot = new(1_041_288_259_238_279_555UL);
@@ -31,8 +26,8 @@ internal readonly record struct Fp5(
 
     public byte[] ToLittleEndianBytes()
     {
-        var result = new byte[40];
-        for (var index = 0; index < 5; index++)
+        byte[] result = new byte[40];
+        for (int index = 0; index < 5; index++)
         {
             this[index].WriteLittleEndian(result.AsSpan(index * 8, 8));
         }
@@ -42,28 +37,26 @@ internal readonly record struct Fp5(
 
     public Fp5 Square()
     {
-        var doubleW = W + W;
-        var c0 = (C0 * C0) + (doubleW * ((C1 * C4) + (C2 * C3)));
-        var doubleC0 = C0 + C0;
-        var c1 = (doubleC0 * C1) + (doubleW * C2 * C4) + (W * C3 * C3);
-        var c2 = (doubleC0 * C2) + (C1 * C1) + (doubleW * C4 * C3);
-        var doubleC1 = C1 + C1;
-        var c3 = (doubleC0 * C3) + (doubleC1 * C2) + (W * C4 * C4);
-        var c4 = (doubleC0 * C4) + (doubleC1 * C3) + (C2 * C2);
+        Goldilocks doubleW = W + W;
+        Goldilocks c0 = (C0 * C0) + (doubleW * ((C1 * C4) + (C2 * C3)));
+        Goldilocks doubleC0 = C0 + C0;
+        Goldilocks c1 = (doubleC0 * C1) + (doubleW * C2 * C4) + (W * C3 * C3);
+        Goldilocks c2 = (doubleC0 * C2) + (C1 * C1) + (doubleW * C4 * C3);
+        Goldilocks doubleC1 = C1 + C1;
+        Goldilocks c3 = (doubleC0 * C3) + (doubleC1 * C2) + (W * C4 * C4);
+        Goldilocks c4 = (doubleC0 * C4) + (doubleC1 * C3) + (C2 * C2);
         return new Fp5(c0, c1, c2, c3, c4);
     }
 
     public Fp5 InverseOrZero()
     {
         if (IsZero)
-        {
             return Zero;
-        }
 
-        var d = Frobenius();
-        var e = d * d.Frobenius();
-        var f = e * e.RepeatedFrobenius(2);
-        var scalar = (C0 * f.C0) + W * ((C1 * f.C4) + (C2 * f.C3) + (C3 * f.C2) + (C4 * f.C1));
+        Fp5 d = Frobenius();
+        Fp5 e = d * d.Frobenius();
+        Fp5 f = e * e.RepeatedFrobenius(2);
+        Goldilocks scalar = (C0 * f.C0) + W * ((C1 * f.C4) + (C2 * f.C3) + (C3 * f.C2) + (C4 * f.C1));
         return f * scalar.InverseOrZero();
     }
 
@@ -73,19 +66,17 @@ internal readonly record struct Fp5(
     {
         count %= 5;
         if (count == 0)
-        {
             return this;
-        }
 
-        var root = DthRoot;
-        for (var index = 1; index < count; index++)
+        Goldilocks root = DthRoot;
+        for (int index = 1; index < count; index++)
         {
             root *= DthRoot;
         }
 
-        var power = Goldilocks.One;
-        var result = new Goldilocks[5];
-        for (var index = 0; index < result.Length; index++)
+        Goldilocks power = Goldilocks.One;
+        Goldilocks[] result = new Goldilocks[5];
+        for (int index = 0; index < result.Length; index++)
         {
             result[index] = this[index] * power;
             power *= root;
@@ -112,11 +103,11 @@ internal readonly record struct Fp5(
 
     public static Fp5 operator *(Fp5 a, Fp5 b)
     {
-        var c0 = (a.C0 * b.C0) + W * ((a.C1 * b.C4) + (a.C2 * b.C3) + (a.C3 * b.C2) + (a.C4 * b.C1));
-        var c1 = (a.C0 * b.C1) + (a.C1 * b.C0) + W * ((a.C2 * b.C4) + (a.C3 * b.C3) + (a.C4 * b.C2));
-        var c2 = (a.C0 * b.C2) + (a.C1 * b.C1) + (a.C2 * b.C0) + W * ((a.C3 * b.C4) + (a.C4 * b.C3));
-        var c3 = (a.C0 * b.C3) + (a.C1 * b.C2) + (a.C2 * b.C1) + (a.C3 * b.C0) + W * (a.C4 * b.C4);
-        var c4 = (a.C0 * b.C4) + (a.C1 * b.C3) + (a.C2 * b.C2) + (a.C3 * b.C1) + (a.C4 * b.C0);
+        Goldilocks c0 = (a.C0 * b.C0) + W * ((a.C1 * b.C4) + (a.C2 * b.C3) + (a.C3 * b.C2) + (a.C4 * b.C1));
+        Goldilocks c1 = (a.C0 * b.C1) + (a.C1 * b.C0) + W * ((a.C2 * b.C4) + (a.C3 * b.C3) + (a.C4 * b.C2));
+        Goldilocks c2 = (a.C0 * b.C2) + (a.C1 * b.C1) + (a.C2 * b.C0) + W * ((a.C3 * b.C4) + (a.C4 * b.C3));
+        Goldilocks c3 = (a.C0 * b.C3) + (a.C1 * b.C2) + (a.C2 * b.C1) + (a.C3 * b.C0) + W * (a.C4 * b.C4);
+        Goldilocks c4 = (a.C0 * b.C4) + (a.C1 * b.C3) + (a.C2 * b.C2) + (a.C3 * b.C1) + (a.C4 * b.C0);
         return new Fp5(c0, c1, c2, c3, c4);
     }
 
@@ -129,11 +120,9 @@ internal readonly record struct Fp5(
 
     public static Fp5 operator /(Fp5 numerator, Fp5 denominator)
     {
-        var inverse = denominator.InverseOrZero();
+        Fp5 inverse = denominator.InverseOrZero();
         if (inverse.IsZero)
-        {
             throw new DivideByZeroException();
-        }
 
         return numerator * inverse;
     }

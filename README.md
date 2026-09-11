@@ -12,7 +12,7 @@ A fully managed, dependency-free .NET signer for [Lighter](https://lighter.xyz/)
 
 | Property | Value |
 |---|---|
-| Supported operations | Authentication, create order, cancel order, sub-account transfer |
+| Supported operations | Authentication, create order, modify order, cancel order, update leverage, approve integrator, sub-account transfer, L2 transaction attributes |
 | Implementation | Fully managed C#; no native libraries |
 | Package dependencies | None |
 | Target frameworks | .NET 8 and .NET 10; compatible with .NET 9 via the .NET 8 asset |
@@ -21,14 +21,14 @@ A fully managed, dependency-free .NET signer for [Lighter](https://lighter.xyz/)
 ## Installation
 
 ```bash
-dotnet add package Lighter.Signer.Net --version 0.1.0-preview.1
+dotnet add package Lighter.Signer.Net --version 0.2.0-preview.1
 ```
 
 To install a package built from this repository:
 
 ```bash
 dotnet pack src/Lighter.Signer.Net/Lighter.Signer.Net.csproj -c Release -o artifacts
-dotnet add package Lighter.Signer.Net --version 0.1.0-preview.1 --source artifacts
+dotnet add package Lighter.Signer.Net --version 0.2.0-preview.1 --source artifacts
 ```
 
 ## Quick start
@@ -59,7 +59,7 @@ var signedOrder = signer.SignCreateOrder(
         TimeInForce: 1,
         ReduceOnly: false,
         TriggerPrice: 0,
-        OrderExpiry: DateTimeOffset.UtcNow.AddDays(28).ToUnixTimeMilliseconds()),
+        OrderExpiry: LighterSigner.Default28DayOrderExpiry),
     nonce: 42);
 
 // Submit signedOrder.TransactionType and signedOrder.TransactionInfo
@@ -68,22 +68,106 @@ var signedOrder = signer.SignCreateOrder(
 
 The values above are illustrative. Amounts and prices must be scaled using the target market's supported decimal precision.
 
+`OrderRequest` takes raw `byte` fields, so consumers can plug in their own models. The
+`OrderType`, `OrderTimeInForce`, `SelfTradeBehavior`, `SelfTradeEquality`, and `MarginMode`
+enums are optional conveniences; `OrderRequest.Create(...)` accepts the enums directly:
+
+```csharp
+var order = OrderRequest.Create(
+    marketIndex: 7,
+    clientOrderIndex: 123456,
+    baseAmount: 20_000_000,
+    price: 1_000_000,
+    isAsk: false,
+    type: OrderType.Limit,
+    timeInForce: OrderTimeInForce.GoodTillTime,
+    reduceOnly: false,
+    triggerPrice: 0,
+    orderExpiry: LighterSigner.Default28DayOrderExpiry);
+```
+
+An `OrderExpiry` of `-1` (`LighterSigner.Default28DayOrderExpiry`) signs the order with a
+28-day expiry, matching the official signers. All order types are supported — limit, market,
+stop-loss, stop-loss limit, take-profit, take-profit limit, and TWAP — with the same
+per-type validation rules as the Go signer; spot markets accept limit, market, and TWAP
+orders, while trigger orders and reduce-only are perpetual-market-only.
+
 ## Supported operations
 
 | Method | Result |
 |---|---|
 | `CreateAuthToken(deadline)` | Time-limited authentication token |
-| `SignCreateOrder(order, nonce)` | Signed create-order transaction |
-| `SignCancelOrder(marketIndex, exchangeOrderIndex, nonce)` | Signed cancel-order transaction |
-| `SignTransfer(transfer, nonce)` | Signed sub-account transfer transaction |
+| `SignCreateOrder(order, nonce, attributes?)` | Signed create-order transaction |
+| `SignModifyOrder(modify, nonce, attributes?)` | Signed modify-order transaction |
+| `SignCancelOrder(marketIndex, exchangeOrderIndex, nonce, attributes?)` | Signed cancel-order transaction |
+| `SignUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce, attributes?)` | Signed update-leverage transaction |
+| `SignApproveIntegrator(approval, nonce, attributes?)` | Signed approve-integrator transaction |
+| `SignTransfer(transfer, nonce, attributes?)` | Signed sub-account transfer transaction |
 
 Each transaction-signing method returns a `SignedTransaction` containing:
 
 - `TransactionType` — Lighter transaction type identifier.
 - `TransactionInfo` — serialized signed payload for submission.
 - `TransactionHash` — hexadecimal hash of the signed transaction fields.
+- `L1SignatureBody` — for approve-integrator transactions, the human-readable message an
+  account's L1 (Ethereum) key signs to authorize the approval; `null` otherwise.
 
-The signer expects prepared inputs, including the correct chain ID, nonce, scaled market values, and exchange order index. Retrieving those values and submitting the resulting payload are responsibilities of the calling application.
+Approving a third-party integrator with non-zero fees also needs that message signed by the
+account's Ethereum key as an EIP-191 personal message. The library is dependency-free and does not
+sign with Ethereum keys, so sign `L1SignatureBody` with your own tooling and attach the result.
+Matching the official Python SDK, `WithL1Signature` patches the signature into the payload's
+`L1Sig` field and leaves the transaction hash untouched:
+
+```csharp
+SignedTransaction approval = signer.SignApproveIntegrator(new ApproveIntegratorRequest(6, 1_000, 1_000, 1_000, 1_000, approvalExpiry), nonce);
+string l1Signature = SignPersonalMessage(approval.L1SignatureBody!); // 0x-prefixed 65-byte hex from your Ethereum signer
+SignedTransaction ready = approval.WithL1Signature(l1Signature);
+```
+
+Approvals of a sub-account under the same master account, zero-fee approvals, and revocations
+(approval expiry `0`) are submitted without an L1 signature, exactly as the official SDKs do.
+
+The transfer memo is a string carrying exactly 32 bytes: 32 raw characters, or 64 hex
+characters (optionally `0x`-prefixed). Matching the official signers, shorter memos are not
+padded automatically.
+
+The signer expects prepared inputs, including the correct chain ID, nonce, scaled market values, and exchange order index. Retrieving those values and submitting the resulting payload are responsibilities of the calling application. `ExchangeConstants` exposes the exchange's protocol bounds (market index ranges, order index limits, fee tick, and so on) for client-side validation.
+
+### L2 transaction attributes
+
+Every transaction-signing method accepts an optional `L2TxAttributes` for integrator fees,
+nonce skipping, self-trade behavior, and modify-order versions. Set only the fields you need —
+at most four per transaction — and leave the rest `null`:
+
+```csharp
+var signedWithAttributes = signer.SignCreateOrder(order, nonce, new L2TxAttributes
+{
+    SelfTradeBehaviorMode = (byte)SelfTradeBehavior.CancelBoth,
+});
+```
+
+Attributes at their default values (for example a fee of `0`) appear in the payload but,
+matching the Go signer, do not change the transaction hash.
+
+`OrderVersion` mirrors the Python SDK's `order_version` for modify orders. The exchange applies a
+versioned modify only when the version is greater than the order's current one, so stale or retried
+modifies cannot overwrite a newer one. A millisecond timestamp is the usual choice:
+
+```csharp
+SignedTransaction versioned = signer.SignModifyOrder(modify, nonce, new L2TxAttributes
+{
+    OrderVersion = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+});
+```
+
+### Transaction expiry
+
+Signed transactions expire `LighterSigner.DefaultTransactionExpiry` (ten minutes less a
+second) after signing. Adjust it per signer instance:
+
+```csharp
+signer.TransactionExpiry = TimeSpan.FromMinutes(5);
+```
 
 ## Security
 

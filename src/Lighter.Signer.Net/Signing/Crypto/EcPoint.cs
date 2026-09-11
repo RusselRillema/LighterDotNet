@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace Lighter.Signer.Cryptography;
 
 /// <summary>A point on Lighter's prime-order ECgFp5 group in fractional coordinates.</summary>
@@ -24,16 +26,16 @@ internal readonly record struct EcPoint(Fp5 X, Fp5 Z, Fp5 U, Fp5 T)
 
     public EcPoint Add(EcPoint other)
     {
-        var t1 = X * other.X;
-        var t2 = Z * other.Z;
-        var t3 = U * other.U;
-        var t4 = T * other.T;
-        var t5 = ((X + Z) * (other.X + other.Z)) - t1 - t2;
-        var t6 = ((U + T) * (other.U + other.T)) - t3 - t4;
-        var t7 = t1 + (t2 * B);
-        var t8 = t4 * t7;
-        var t9 = t3 * ((t5 * DoubleB) + t7 + t7);
-        var t10 = (t4 + t3 + t3) * (t5 + t7);
+        Fp5 t1 = X * other.X;
+        Fp5 t2 = Z * other.Z;
+        Fp5 t3 = U * other.U;
+        Fp5 t4 = T * other.T;
+        Fp5 t5 = ((X + Z) * (other.X + other.Z)) - t1 - t2;
+        Fp5 t6 = ((U + T) * (other.U + other.T)) - t3 - t4;
+        Fp5 t7 = t1 + (t2 * B);
+        Fp5 t8 = t4 * t7;
+        Fp5 t9 = t3 * ((t5 * DoubleB) + t7 + t7);
+        Fp5 t10 = (t4 + t3 + t3) * (t5 + t7);
         return new EcPoint(
             (t10 - t8) * B,
             t8 - t9,
@@ -43,13 +45,13 @@ internal readonly record struct EcPoint(Fp5 X, Fp5 Z, Fp5 U, Fp5 T)
 
     public EcPoint Double()
     {
-        var t1 = Z * T;
-        var t2 = t1 * T;
-        var x1 = t2.Square();
-        var z1 = t1 * U;
-        var t3 = U.Square();
-        var w1 = t2 - (t3 * (X + Z + X + Z));
-        var t4 = z1.Square();
+        Fp5 t1 = Z * T;
+        Fp5 t2 = t1 * T;
+        Fp5 x1 = t2.Square();
+        Fp5 z1 = t1 * U;
+        Fp5 t3 = U.Square();
+        Fp5 w1 = t2 - (t3 * (X + Z + X + Z));
+        Fp5 t4 = z1.Square();
         return new EcPoint(
             t4 * QuadrupleB,
             w1.Square(),
@@ -59,15 +61,13 @@ internal readonly record struct EcPoint(Fp5 X, Fp5 Z, Fp5 U, Fp5 T)
 
     public EcPoint Multiply(Scalar scalar)
     {
-        var result = Neutral;
-        var addend = this;
-        var remaining = scalar.Value;
+        EcPoint result = Neutral;
+        EcPoint addend = this;
+        BigInteger remaining = scalar.Value;
         while (remaining > 0)
         {
             if (!remaining.IsEven)
-            {
                 result = result.Add(addend);
-            }
 
             addend = addend.Double();
             remaining >>= 1;
