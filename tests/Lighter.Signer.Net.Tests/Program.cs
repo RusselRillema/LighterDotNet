@@ -35,6 +35,7 @@ const string VectorMemoHex = "6f6666696369616c2d7472616e736665722d766563746f7200
     ("Enum factory equals byte construction", TestEnumFactoryAsync),
     ("Custom transaction expiry honored", TestTransactionExpiryAsync),
     ("Negative and spot-market inputs match official Go signer", TestNegativeAndSpotInputHashesAsync),
+    ("Wide market indexes match official Go signer", TestWideMarketIndexHashesAsync),
     ("L1 signature attaches to approve-integrator payload", TestL1SignatureAttachmentAsync),
     ("Package exposes only signer API types", TestPublicSurfaceAsync),
     ("REST client uses official wire contract", TestRestWireContractAsync),
@@ -674,12 +675,6 @@ static Task TestNegativeAndSpotInputHashesAsync()
     // Go renders the -1 integrator index via two's complement in the L1 body.
     AssertContains("integrator account index: 0xffffffffffffffff", negativeIntegrator.L1SignatureBody!);
 
-    SignedTransaction negativeMarket = CreateTestSigner(1_784_267_548_441).SignUpdateLeverage(-1, 500, 0, 51);
-    AssertEqual(
-        "99423782871fb3b06e0655cb4f49a3e689daa608ab4091dbf6bbfc35c073489b0f506cb7e05e2f50",
-        negativeMarket.TransactionHash,
-        "negative leverage market hash");
-
     SignedTransaction spotCancel = CreateTestSigner(1_784_267_548_442).SignCancelOrder(2048, 281_474_976_710_700, 52);
     AssertEqual(
         "8c9def27ab316cf32a8478353460f5174d67adada531648efff455989ea278e7a7646a7f2c5e85b7",
@@ -705,6 +700,58 @@ static Task TestNegativeAndSpotInputHashesAsync()
     AssertThrows<ArgumentOutOfRangeException>(
         () => strictSigner.SignTransfer(new TransferRequest(2, 1, 0, 1, 100, 0, new string('0', 64)), -1),
         "negative transfer nonce");
+    return Task.CompletedTask;
+}
+
+static Task TestWideMarketIndexHashesAsync()
+{
+    const long maxMarketIndex = 281_474_976_710_655;
+    AssertEqual((1L << 48) - 1, ExchangeConstants.MaxMarketIndex, "maximum market index");
+
+    SignedTransaction create = CreateTestSigner(1_784_267_548_446).SignCreateOrder(new OrderRequest(maxMarketIndex, 123, 10, 1_000_000, false, 0, 1, false, 0, 1_999_999_999_999), 56);
+    AssertEqual(
+        "6686789b2ac0d391f8d961dd396f77445e5ed8c5a7b583883be6de968433c54c1ceaf211c3ca0c92",
+        create.TransactionHash,
+        "maximum-market create-order hash");
+    using (JsonDocument payload = JsonDocument.Parse(create.TransactionInfo))
+    {
+        AssertEqual(maxMarketIndex, payload.RootElement.GetProperty("MarketIndex").GetInt64(), "create payload market index");
+    }
+
+    SignedTransaction cancel = CreateTestSigner(1_784_267_548_447).SignCancelOrder(32_768, 281_474_976_710_700, 57);
+    AssertEqual(
+        "6d263fb00dbbe667bfbb2a1352643acc4bf0917cc58a07946ec8c893dabbe0394e0ecd348499fb47",
+        cancel.TransactionHash,
+        "market 2^15 cancel-order hash");
+
+    SignedTransaction modify = CreateTestSigner(1_784_267_548_448).SignModifyOrder(new ModifyOrderRequest(4_294_967_296, 281_474_976_710_700, 10, 100, 0), 58);
+    AssertEqual(
+        "2c5465760cdfadd33818376925c7d7469b0873037c7a8c0b5c30c9c604c97071170a724d89dad7a5",
+        modify.TransactionHash,
+        "market 2^32 modify-order hash");
+
+    SignedTransaction leverage = CreateTestSigner(1_784_267_548_449).SignUpdateLeverage(maxMarketIndex, 500, 0, 59);
+    AssertEqual(
+        "fe3ec5c005c863a63af38f2810c900f0ea54da153da20d51a9796cb46b4e4ba01ab0eddb3d14d398",
+        leverage.TransactionHash,
+        "maximum-market update-leverage hash");
+
+    LighterSigner signer = CreateTestSigner(1_784_267_548_446);
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignCreateOrder(new OrderRequest(maxMarketIndex + 1, 123, 10, 1_000_000, false, 0, 1, false, 0, 1_999_999_999_999), 56),
+        "create market above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignCancelOrder(maxMarketIndex + 1, 281_474_976_710_700, 57),
+        "cancel market above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(maxMarketIndex + 1, 281_474_976_710_700, 10, 100, 0), 58),
+        "modify market above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignUpdateLeverage(maxMarketIndex + 1, 500, 0, 59),
+        "leverage market above the maximum");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignUpdateLeverage(-1, 500, 0, 59),
+        "leverage negative market index");
     return Task.CompletedTask;
 }
 
@@ -825,6 +872,7 @@ static async Task TestSevenGoalStepsAsync()
     AssertDoesNotContain("\"AccountIndex\":987654", text);
     AssertDoesNotContain("\"ApiKeyIndex\":13", text);
     AssertEqual(true, fakeExchange.CancelUsedExchangeOrderIndex, "cancel exchange order index");
+    AssertEqual(281_474_976_710_655L, fakeExchange.CanceledMarketIndex, "cancel market index");
 }
 
 static LighterSigner CreateTestSigner(long unixTimeMilliseconds) => new(TestPrivateKey, 1, 0, 304, new FixedTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(unixTimeMilliseconds)));
@@ -949,6 +997,8 @@ sealed class StatefulFakeExchange : ILighterApiClient
 
     public long CreatedBaseAmount { get; private set; }
 
+    public long CanceledMarketIndex { get; private set; }
+
     public Task<Account> GetAccountAsync(long accountIndex, CancellationToken cancellationToken) =>
         Task.FromResult(new Account
         {
@@ -966,7 +1016,7 @@ sealed class StatefulFakeExchange : ILighterApiClient
         Task.FromResult(new MarketDetails
         {
             Symbol = "XRP",
-            MarketId = 7,
+            MarketId = 281_474_976_710_655,
             Status = "active",
             MinimumBaseAmount = "1",
             SupportedSizeDecimals = 0,
@@ -989,7 +1039,7 @@ sealed class StatefulFakeExchange : ILighterApiClient
             _openOrder = new OpenOrder
             {
                 ClientOrderIndex = document.RootElement.GetProperty("ClientOrderIndex").GetInt64(),
-                MarketIndex = document.RootElement.GetProperty("MarketIndex").GetInt16(),
+                MarketIndex = document.RootElement.GetProperty("MarketIndex").GetInt64(),
                 OrderIndex = 281_474_976_710_700,
                 OrderId = "exchange-order-123",
             };
@@ -997,6 +1047,7 @@ sealed class StatefulFakeExchange : ILighterApiClient
         else if (transaction.TransactionType == LighterSigner.CancelOrderTransactionType)
         {
             CancelUsedExchangeOrderIndex = document.RootElement.GetProperty("Index").GetInt64() == _openOrder?.OrderIndex;
+            CanceledMarketIndex = document.RootElement.GetProperty("MarketIndex").GetInt64();
             _openOrder = null;
         }
 
