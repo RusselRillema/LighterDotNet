@@ -89,8 +89,9 @@ var order = OrderRequest.Create(
 An `OrderExpiry` of `-1` (`LighterSigner.Default28DayOrderExpiry`) signs the order with a
 28-day expiry, matching the official signers. All order types are supported — limit, market,
 stop-loss, stop-loss limit, take-profit, take-profit limit, and TWAP — with the same
-per-type validation rules as the Go signer; spot markets accept limit, market, and TWAP
-orders, while trigger orders and reduce-only are perpetual-market-only.
+per-type validation rules as the Go signer. Market indexes no longer distinguish perpetual
+from spot markets, so, like the Go signer, the library leaves market-type restrictions (such as
+perpetual-only trigger and reduce-only orders) to the exchange.
 
 ## Supported operations
 
@@ -131,7 +132,7 @@ The transfer memo is a string carrying exactly 32 bytes: 32 raw characters, or 6
 characters (optionally `0x`-prefixed). Matching the official signers, shorter memos are not
 padded automatically.
 
-The signer expects prepared inputs, including the correct chain ID, nonce, scaled market values, and exchange order index. Retrieving those values and submitting the resulting payload are responsibilities of the calling application. `ExchangeConstants` exposes the exchange's protocol bounds (market index ranges, order index limits, fee tick, and so on) for client-side validation.
+The signer expects prepared inputs, including the correct chain ID, nonce, scaled market values, and exchange order index. Retrieving those values and submitting the resulting payload are responsibilities of the calling application. `ExchangeConstants` exposes the exchange's protocol bounds (market index bounds, order index limits, fee tick, and so on) for client-side validation.
 
 ### L2 transaction attributes
 

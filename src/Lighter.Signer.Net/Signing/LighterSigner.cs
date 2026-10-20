@@ -405,14 +405,11 @@ public sealed class LighterSigner
 
     private static string ToHex16(ulong value) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{value:x16}");
 
-    private static bool IsPerpetualMarket(short marketIndex) => marketIndex is >= ExchangeConstants.MinPerpetualMarketIndex and <= ExchangeConstants.MaxPerpetualMarketIndex;
-
-    private static bool IsSpotMarket(short marketIndex) => marketIndex is >= ExchangeConstants.MinSpotMarketIndex and <= ExchangeConstants.MaxSpotMarketIndex;
-
+    // Market indexes no longer encode perpetual vs spot, so market-type rules are left to the exchange.
     private static void ValidateMarketIndex(short marketIndex, string paramName)
     {
-        if (!IsPerpetualMarket(marketIndex) && !IsSpotMarket(marketIndex))
-            throw new ArgumentOutOfRangeException(paramName, "Market index must be 0-254 (perpetual) or 2048-4094 (spot).");
+        if (marketIndex is < ExchangeConstants.MinMarketIndex or > ExchangeConstants.MaxMarketIndex or ExchangeConstants.NilMarketIndex)
+            throw new ArgumentOutOfRangeException(paramName, "Market index must be between 0 and 2^15 - 1 and cannot be 255, the nil sentinel.");
     }
 
     private static void ValidateExchangeOrderIndex(long exchangeOrderIndex, string paramName)
@@ -431,8 +428,6 @@ public sealed class LighterSigner
     private static void ValidateCreateOrder(OrderRequest order, long nonce)
     {
         ValidateMarketIndex(order.MarketIndex, nameof(order));
-        bool isPerpetualMarket = IsPerpetualMarket(order.MarketIndex);
-        bool isSpotMarket = IsSpotMarket(order.MarketIndex);
 
         // Zero is the nil client order index and lets the exchange assign one.
         if (order.ClientOrderIndex is < ExchangeConstants.NilClientOrderIndex or > ExchangeConstants.MaxClientOrderIndex)
@@ -450,9 +445,6 @@ public sealed class LighterSigner
 
         if (order.TimeInForce > (byte)OrderTimeInForce.PostOnly)
             throw new ArgumentOutOfRangeException(nameof(order), "Time in force must be 0 (IOC), 1 (GTT), or 2 (post-only).");
-
-        if (order.ReduceOnly && isSpotMarket)
-            throw new ArgumentException("Reduce-only orders are not supported on spot markets.", nameof(order));
 
         // Zero is the nil order expiry; a -1 request was already replaced with the 28-day default.
         if (order.OrderExpiry < 0)
@@ -478,8 +470,6 @@ public sealed class LighterSigner
 
             case (byte)OrderType.StopLoss:
             case (byte)OrderType.TakeProfit:
-                if (!isPerpetualMarket)
-                    throw new ArgumentException("Trigger orders are only supported on perpetual markets.", nameof(order));
                 if (order.TimeInForce != (byte)OrderTimeInForce.ImmediateOrCancel)
                     throw new ArgumentException("Stop-loss and take-profit orders must be immediate-or-cancel.", nameof(order));
                 if (order.TriggerPrice == 0)
@@ -490,8 +480,6 @@ public sealed class LighterSigner
 
             case (byte)OrderType.StopLossLimit:
             case (byte)OrderType.TakeProfitLimit:
-                if (!isPerpetualMarket)
-                    throw new ArgumentException("Trigger orders are only supported on perpetual markets.", nameof(order));
                 if (order.TriggerPrice == 0)
                     throw new ArgumentException("Trigger orders require a trigger price.", nameof(order));
                 if (order.OrderExpiry == 0)

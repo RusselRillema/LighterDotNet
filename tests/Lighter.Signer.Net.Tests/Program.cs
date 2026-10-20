@@ -225,8 +225,11 @@ static Task TestNewValidatorRejectionsAsync()
     LighterSigner signer = CreateTestSigner(1_784_267_548_433);
 
     AssertThrows<ArgumentOutOfRangeException>(
-        () => signer.SignModifyOrder(new ModifyOrderRequest(300, 10, 10, 100, 0), 60),
-        "modify market between perps and spot");
+        () => signer.SignModifyOrder(new ModifyOrderRequest(255, 10, 10, 100, 0), 60),
+        "modify nil market sentinel");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignModifyOrder(new ModifyOrderRequest(-1, 10, 10, 100, 0), 60),
+        "modify negative market index");
     AssertThrows<ArgumentOutOfRangeException>(
         () => signer.SignModifyOrder(new ModifyOrderRequest(7, 0, 10, 100, 0), 60),
         "modify order index zero");
@@ -577,20 +580,20 @@ static Task TestOrderValidationAsync()
         () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 0, 1, false, 0, 0), 50),
         "good-till-time limit order without an expiry");
     AssertThrows<ArgumentException>(
-        () => signer.SignCreateOrder(new OrderRequest(2048, 125, 10, 100, false, 2, 0, false, 90, expiry), 50),
-        "stop-loss order on a spot market");
-    AssertThrows<ArgumentException>(
         () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 6, 0, false, 0, expiry), 50),
         "TWAP order with immediate-or-cancel");
-    AssertThrows<ArgumentException>(
-        () => signer.SignCreateOrder(new OrderRequest(2048, 125, 10, 100, false, 0, 1, true, 0, expiry), 50),
-        "reduce-only order on a spot market");
     AssertThrows<ArgumentException>(
         () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 7, 1, false, 0, expiry), 50),
         "unknown order type");
     AssertThrows<ArgumentOutOfRangeException>(
         () => signer.SignCreateOrder(new OrderRequest(7, 125, 10, 100, false, 0, 1, false, 0, -2), 50),
         "negative non-sentinel order expiry");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignCreateOrder(new OrderRequest(255, 125, 10, 100, false, 0, 1, false, 0, expiry), 50),
+        "nil market sentinel");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => signer.SignCreateOrder(new OrderRequest(-1, 125, 10, 100, false, 0, 1, false, 0, expiry), 50),
+        "negative market index");
 
     AssertEqual(
         14,
@@ -604,6 +607,23 @@ static Task TestOrderValidationAsync()
         14,
         signer.SignCreateOrder(new OrderRequest(7, 127, 10, 100, false, 2, 0, false, 95, expiry), 50).TransactionType,
         "perpetual stop-loss order signs");
+
+    // Market indexes no longer encode the market type, so these legacy spot-range orders now sign.
+    AssertEqual(
+        14,
+        signer.SignCreateOrder(new OrderRequest(2048, 125, 10, 100, false, 2, 0, false, 90, expiry), 50).TransactionType,
+        "stop-loss order on a legacy spot index signs");
+    AssertEqual(
+        14,
+        signer.SignCreateOrder(new OrderRequest(2048, 125, 10, 100, false, 0, 1, true, 0, expiry), 50).TransactionType,
+        "reduce-only order on a legacy spot index signs");
+
+    foreach (short marketIndex in new short[] { 300, 4095, 32_767 })
+    {
+        AssertEqual(14, signer.SignCreateOrder(new OrderRequest(marketIndex, 128, 10, 100, false, 0, 1, false, 0, expiry), 50).TransactionType, $"create order on market {marketIndex} signs");
+        AssertEqual(15, signer.SignCancelOrder(marketIndex, 281_474_976_710_700, 50).TransactionType, $"cancel order on market {marketIndex} signs");
+    }
+
     return Task.CompletedTask;
 }
 
@@ -665,6 +685,12 @@ static Task TestNegativeAndSpotInputHashesAsync()
         "8c9def27ab316cf32a8478353460f5174d67adada531648efff455989ea278e7a7646a7f2c5e85b7",
         spotCancel.TransactionHash,
         "spot-market cancel hash");
+
+    SignedTransaction highMarketCancel = CreateTestSigner(1_784_267_548_445).SignCancelOrder(32_767, 281_474_976_710_700, 55);
+    AssertEqual(
+        "60fb6686a2ad1e39786b2915ee7c56429910c2f998c764894fc1ee61892eeb1046585355e98f22bf",
+        highMarketCancel.TransactionHash,
+        "market 2^15 - 1 cancel hash");
 
     LighterSigner strictSigner = CreateTestSigner(1_784_267_548_442);
     AssertThrows<ArgumentOutOfRangeException>(
