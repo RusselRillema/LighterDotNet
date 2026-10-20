@@ -35,7 +35,7 @@ public sealed class AccountAsset
 public sealed class AccountPosition
 {
     [JsonPropertyName("market_id")]
-    public int MarketId { get; init; }
+    public long MarketId { get; init; }
 }
 
 public sealed class ApiKeysResponse : ApiResponse
@@ -71,7 +71,7 @@ public sealed class MarketDetails
     public string Symbol { get; init; } = string.Empty;
 
     [JsonPropertyName("market_id")]
-    public short MarketId { get; init; }
+    public long MarketId { get; init; }
 
     [JsonPropertyName("status")]
     public string Status { get; init; } = string.Empty;
@@ -104,7 +104,7 @@ public sealed class OpenOrder
     public string OrderId { get; init; } = string.Empty;
 
     [JsonPropertyName("market_index")]
-    public short MarketIndex { get; init; }
+    public long MarketIndex { get; init; }
 }
 
 public sealed class SendTransactionResponse : ApiResponse

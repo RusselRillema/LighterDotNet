@@ -144,7 +144,7 @@ public sealed class LighterSigner
         return ToSignedTransaction(CreateOrderTransactionType, payload, hash);
     }
 
-    public SignedTransaction SignCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
+    public SignedTransaction SignCancelOrder(long marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateCancelOrder(marketIndex, exchangeOrderIndex, nonce);
         SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
@@ -207,7 +207,7 @@ public sealed class LighterSigner
         return ToSignedTransaction(ModifyOrderTransactionType, payload, hash);
     }
 
-    public SignedTransaction SignUpdateLeverage(short marketIndex, ushort initialMarginFraction, byte marginMode, long nonce, L2TxAttributes? attributes = null)
+    public SignedTransaction SignUpdateLeverage(long marketIndex, ushort initialMarginFraction, byte marginMode, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce);
         SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
@@ -405,14 +405,11 @@ public sealed class LighterSigner
 
     private static string ToHex16(ulong value) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{value:x16}");
 
-    private static bool IsPerpetualMarket(short marketIndex) => marketIndex is >= ExchangeConstants.MinPerpetualMarketIndex and <= ExchangeConstants.MaxPerpetualMarketIndex;
-
-    private static bool IsSpotMarket(short marketIndex) => marketIndex is >= ExchangeConstants.MinSpotMarketIndex and <= ExchangeConstants.MaxSpotMarketIndex;
-
-    private static void ValidateMarketIndex(short marketIndex, string paramName)
+    // Market indexes no longer encode perpetual vs spot, so market-type rules are left to the exchange.
+    private static void ValidateMarketIndex(long marketIndex, string paramName)
     {
-        if (!IsPerpetualMarket(marketIndex) && !IsSpotMarket(marketIndex))
-            throw new ArgumentOutOfRangeException(paramName, "Market index must be 0-254 (perpetual) or 2048-4094 (spot).");
+        if (marketIndex is < ExchangeConstants.MinMarketIndex or > ExchangeConstants.MaxMarketIndex or ExchangeConstants.NilMarketIndex)
+            throw new ArgumentOutOfRangeException(paramName, "Market index must be between 0 and 2^48 - 1 and cannot be 255, the nil sentinel.");
     }
 
     private static void ValidateExchangeOrderIndex(long exchangeOrderIndex, string paramName)
@@ -431,8 +428,6 @@ public sealed class LighterSigner
     private static void ValidateCreateOrder(OrderRequest order, long nonce)
     {
         ValidateMarketIndex(order.MarketIndex, nameof(order));
-        bool isPerpetualMarket = IsPerpetualMarket(order.MarketIndex);
-        bool isSpotMarket = IsSpotMarket(order.MarketIndex);
 
         // Zero is the nil client order index and lets the exchange assign one.
         if (order.ClientOrderIndex is < ExchangeConstants.NilClientOrderIndex or > ExchangeConstants.MaxClientOrderIndex)
@@ -450,9 +445,6 @@ public sealed class LighterSigner
 
         if (order.TimeInForce > (byte)OrderTimeInForce.PostOnly)
             throw new ArgumentOutOfRangeException(nameof(order), "Time in force must be 0 (IOC), 1 (GTT), or 2 (post-only).");
-
-        if (order.ReduceOnly && isSpotMarket)
-            throw new ArgumentException("Reduce-only orders are not supported on spot markets.", nameof(order));
 
         // Zero is the nil order expiry; a -1 request was already replaced with the 28-day default.
         if (order.OrderExpiry < 0)
@@ -478,8 +470,6 @@ public sealed class LighterSigner
 
             case (byte)OrderType.StopLoss:
             case (byte)OrderType.TakeProfit:
-                if (!isPerpetualMarket)
-                    throw new ArgumentException("Trigger orders are only supported on perpetual markets.", nameof(order));
                 if (order.TimeInForce != (byte)OrderTimeInForce.ImmediateOrCancel)
                     throw new ArgumentException("Stop-loss and take-profit orders must be immediate-or-cancel.", nameof(order));
                 if (order.TriggerPrice == 0)
@@ -490,8 +480,6 @@ public sealed class LighterSigner
 
             case (byte)OrderType.StopLossLimit:
             case (byte)OrderType.TakeProfitLimit:
-                if (!isPerpetualMarket)
-                    throw new ArgumentException("Trigger orders are only supported on perpetual markets.", nameof(order));
                 if (order.TriggerPrice == 0)
                     throw new ArgumentException("Trigger orders require a trigger price.", nameof(order));
                 if (order.OrderExpiry == 0)
@@ -514,7 +502,7 @@ public sealed class LighterSigner
         ValidateNonce(nonce);
     }
 
-    private static void ValidateCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce)
+    private static void ValidateCancelOrder(long marketIndex, long exchangeOrderIndex, long nonce)
     {
         ValidateMarketIndex(marketIndex, nameof(marketIndex));
         ValidateExchangeOrderIndex(exchangeOrderIndex, nameof(exchangeOrderIndex));
@@ -537,11 +525,9 @@ public sealed class LighterSigner
         ValidateNonce(nonce);
     }
 
-    private static void ValidateUpdateLeverage(short marketIndex, ushort initialMarginFraction, byte marginMode, long nonce)
+    private static void ValidateUpdateLeverage(long marketIndex, ushort initialMarginFraction, byte marginMode, long nonce)
     {
-        // Matching Go, only the nil market sentinel is rejected; negative indices are signable.
-        if (marketIndex == ExchangeConstants.NilMarketIndex)
-            throw new ArgumentOutOfRangeException(nameof(marketIndex), "Market index 255 is the nil sentinel and cannot be used.");
+        ValidateMarketIndex(marketIndex, nameof(marketIndex));
 
         if (marginMode > (byte)MarginMode.Isolated)
             throw new ArgumentOutOfRangeException(nameof(marginMode), "Margin mode must be cross (0) or isolated (1).");
