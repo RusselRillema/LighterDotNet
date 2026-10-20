@@ -619,7 +619,7 @@ static Task TestOrderValidationAsync()
         signer.SignCreateOrder(new OrderRequest(2048, 125, 10, 100, false, 0, 1, true, 0, expiry), 50).TransactionType,
         "reduce-only order on a legacy spot index signs");
 
-    foreach (short marketIndex in new short[] { 300, 4095, 32_767 })
+    foreach (long marketIndex in new long[] { 300, 4095, 32_767 })
     {
         AssertEqual(14, signer.SignCreateOrder(new OrderRequest(marketIndex, 128, 10, 100, false, 0, 1, false, 0, expiry), 50).TransactionType, $"create order on market {marketIndex} signs");
         AssertEqual(15, signer.SignCancelOrder(marketIndex, 281_474_976_710_700, 50).TransactionType, $"cancel order on market {marketIndex} signs");
