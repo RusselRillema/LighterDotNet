@@ -1,7 +1,7 @@
 namespace Lighter.Signer.Transactions;
 
 /// <summary>Create-order parameters, hashed and serialized exactly as the Go signer's OrderInfo.</summary>
-/// <param name="MarketIndex">0 to 2^15 - 1, except 255 (the nil sentinel).</param>
+/// <param name="MarketIndex">0 to 2^48 - 1, except 255 (the nil sentinel).</param>
 /// <param name="ClientOrderIndex">Caller-chosen identifier up to 2^48 - 1; 0 lets the exchange assign one.</param>
 /// <param name="BaseAmount">Scaled base amount; may be 0 only for reduce-only orders.</param>
 /// <param name="Price">Scaled price; must be at least 1.</param>
@@ -12,7 +12,7 @@ namespace Lighter.Signer.Transactions;
 /// <param name="TriggerPrice">Required for stop-loss and take-profit orders; 0 otherwise.</param>
 /// <param name="OrderExpiry">Unix milliseconds; 0 = none (market/IOC), -1 selects the 28-day default.</param>
 public sealed record OrderRequest(
-    short MarketIndex,
+    long MarketIndex,
     long ClientOrderIndex,
     long BaseAmount,
     uint Price,
@@ -26,7 +26,7 @@ public sealed record OrderRequest(
     // A constructor overload taking the enums would be ambiguous with the primary constructor
     // whenever both Type and TimeInForce are the literal 0, so the convenience lives in a factory.
     public static OrderRequest Create(
-        short marketIndex,
+        long marketIndex,
         long clientOrderIndex,
         long baseAmount,
         uint price,

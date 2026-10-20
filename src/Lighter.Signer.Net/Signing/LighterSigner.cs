@@ -144,7 +144,7 @@ public sealed class LighterSigner
         return ToSignedTransaction(CreateOrderTransactionType, payload, hash);
     }
 
-    public SignedTransaction SignCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
+    public SignedTransaction SignCancelOrder(long marketIndex, long exchangeOrderIndex, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateCancelOrder(marketIndex, exchangeOrderIndex, nonce);
         SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
@@ -207,7 +207,7 @@ public sealed class LighterSigner
         return ToSignedTransaction(ModifyOrderTransactionType, payload, hash);
     }
 
-    public SignedTransaction SignUpdateLeverage(short marketIndex, ushort initialMarginFraction, byte marginMode, long nonce, L2TxAttributes? attributes = null)
+    public SignedTransaction SignUpdateLeverage(long marketIndex, ushort initialMarginFraction, byte marginMode, long nonce, L2TxAttributes? attributes = null)
     {
         ValidateUpdateLeverage(marketIndex, initialMarginFraction, marginMode, nonce);
         SortedDictionary<byte, long>? attributeMap = L2TxAttributeEncoder.ToValidatedMap(attributes);
@@ -406,10 +406,10 @@ public sealed class LighterSigner
     private static string ToHex16(ulong value) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{value:x16}");
 
     // Market indexes no longer encode perpetual vs spot, so market-type rules are left to the exchange.
-    private static void ValidateMarketIndex(short marketIndex, string paramName)
+    private static void ValidateMarketIndex(long marketIndex, string paramName)
     {
         if (marketIndex is < ExchangeConstants.MinMarketIndex or > ExchangeConstants.MaxMarketIndex or ExchangeConstants.NilMarketIndex)
-            throw new ArgumentOutOfRangeException(paramName, "Market index must be between 0 and 2^15 - 1 and cannot be 255, the nil sentinel.");
+            throw new ArgumentOutOfRangeException(paramName, "Market index must be between 0 and 2^48 - 1 and cannot be 255, the nil sentinel.");
     }
 
     private static void ValidateExchangeOrderIndex(long exchangeOrderIndex, string paramName)
@@ -502,7 +502,7 @@ public sealed class LighterSigner
         ValidateNonce(nonce);
     }
 
-    private static void ValidateCancelOrder(short marketIndex, long exchangeOrderIndex, long nonce)
+    private static void ValidateCancelOrder(long marketIndex, long exchangeOrderIndex, long nonce)
     {
         ValidateMarketIndex(marketIndex, nameof(marketIndex));
         ValidateExchangeOrderIndex(exchangeOrderIndex, nameof(exchangeOrderIndex));
@@ -525,11 +525,9 @@ public sealed class LighterSigner
         ValidateNonce(nonce);
     }
 
-    private static void ValidateUpdateLeverage(short marketIndex, ushort initialMarginFraction, byte marginMode, long nonce)
+    private static void ValidateUpdateLeverage(long marketIndex, ushort initialMarginFraction, byte marginMode, long nonce)
     {
-        // Matching Go, only the nil market sentinel is rejected; negative indices are signable.
-        if (marketIndex == ExchangeConstants.NilMarketIndex)
-            throw new ArgumentOutOfRangeException(nameof(marketIndex), "Market index 255 is the nil sentinel and cannot be used.");
+        ValidateMarketIndex(marketIndex, nameof(marketIndex));
 
         if (marginMode > (byte)MarginMode.Isolated)
             throw new ArgumentOutOfRangeException(nameof(marginMode), "Margin mode must be cross (0) or isolated (1).");

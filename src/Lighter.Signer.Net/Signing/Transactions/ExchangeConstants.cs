@@ -7,13 +7,13 @@ namespace Lighter.Signer.Transactions;
 public static class ExchangeConstants
 {
     /// <summary>Lowest market index. Mirrors Go's MinMarketIndex.</summary>
-    public const short MinMarketIndex = 0;
+    public const long MinMarketIndex = 0;
 
-    /// <summary>Highest market index (2^15 - 1). Mirrors Go's MaxMarketIndex.</summary>
-    public const short MaxMarketIndex = short.MaxValue;
+    /// <summary>Highest market index (2^48 - 1). Mirrors Go's MaxMarketIndex.</summary>
+    public const long MaxMarketIndex = (1L << 48) - 1;
 
     /// <summary>The nil market sentinel; never a real market. Mirrors Go's NilMarketIndex.</summary>
-    public const short NilMarketIndex = 255;
+    public const long NilMarketIndex = 255;
 
     /// <summary>
     /// Lowest account index the Go signer accepts for transfer destinations and approve-integrator

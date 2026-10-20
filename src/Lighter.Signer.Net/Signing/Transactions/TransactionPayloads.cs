@@ -6,7 +6,7 @@ internal sealed class CreateOrderPayload
 {
     public required long AccountIndex { get; init; }
     public required byte ApiKeyIndex { get; init; }
-    public required short MarketIndex { get; init; }
+    public required long MarketIndex { get; init; }
     public required long ClientOrderIndex { get; init; }
     public required long BaseAmount { get; init; }
     public required uint Price { get; init; }
@@ -28,7 +28,7 @@ internal sealed class CancelOrderPayload
 {
     public required long AccountIndex { get; init; }
     public required byte ApiKeyIndex { get; init; }
-    public required short MarketIndex { get; init; }
+    public required long MarketIndex { get; init; }
     public required long Index { get; init; }
     public required long ExpiredAt { get; init; }
     public required long Nonce { get; init; }
@@ -42,7 +42,7 @@ internal sealed class ModifyOrderPayload
 {
     public required long AccountIndex { get; init; }
     public required byte ApiKeyIndex { get; init; }
-    public required short MarketIndex { get; init; }
+    public required long MarketIndex { get; init; }
     public required long Index { get; init; }
     public required long BaseAmount { get; init; }
     public required uint Price { get; init; }
@@ -59,7 +59,7 @@ internal sealed class UpdateLeveragePayload
 {
     public required long AccountIndex { get; init; }
     public required byte ApiKeyIndex { get; init; }
-    public required short MarketIndex { get; init; }
+    public required long MarketIndex { get; init; }
     public required ushort InitialMarginFraction { get; init; }
     public required byte MarginMode { get; init; }
     public required long ExpiredAt { get; init; }
